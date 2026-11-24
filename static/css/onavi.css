@@ -1,0 +1,66 @@
+/* Gaya Onavi: sidebar navy, kartu putih, aksen merah, font Inter. Token warna Arc & mode gelap: static/css/arc.css. */
+:root {
+  --bg-body: #f0f2f9;
+  --bg-sidebar: #111c43;
+  --bg-topbar: #ffffff;
+  --bg-card: #ffffff;
+  --text-main: #111c43;
+  --primary: #c32836;
+  --primary-hover: #a8212d;
+  --sidebar-width: 260px;
+  --header-height: 64px;
+  --border-color: rgba(0, 0, 0, 0.05);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  --bs-body-bg: var(--bg-body);
+  --bs-body-color: var(--text-main);
+  --bs-emphasis-color: var(--text-main);
+  --bs-primary: var(--primary);
+  --bs-primary-rgb: 195, 40, 54;
+  --bs-link-color-rgb: 195, 40, 54;
+  --bs-link-hover-color-rgb: 168, 33, 45;
+  --bs-body-font-family: "Inter", system-ui, sans-serif;
+}
+
+body { font-size: 0.875rem; }
+
+/* Layout; sidebar ada di static/css/sidebar.css */
+.app-container { display: flex; min-height: 100vh; }
+.logo { text-decoration: none; }
+.logo-text { color: var(--sb-text-strong); font-size: 1.15rem; font-weight: 500; white-space: nowrap; }
+
+/* Header */
+.top-header {
+  position: sticky; top: 0; z-index: 40; height: var(--header-height);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 32px;
+  background: var(--bg-topbar); border-block-end: 1px solid var(--border-color);
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-left h1 { margin: 0; font-size: 1.1rem; font-weight: 500; color: var(--text-main); }
+.header-right { display: flex; align-items: center; gap: 24px; }
+.datetime { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.content { padding: 32px; }
+
+/* Kartu, input, tabel, metric card, chart: static/css/arc.css */
+.card-body { padding: 24px; }
+
+/* Tombol */
+.btn-primary {
+  --bs-btn-bg: var(--primary); --bs-btn-border-color: var(--primary);
+  --bs-btn-hover-bg: var(--primary-hover); --bs-btn-hover-border-color: var(--primary-hover);
+  --bs-btn-active-bg: var(--primary-hover); --bs-btn-active-border-color: var(--primary-hover);
+}
+/* Bar lokasi: aksen lembut seperti batang Arc bar-chart, bukan merah penuh yang terbaca seperti peringatan */
+.progress { height: 0.4rem; border-radius: var(--radius-pill); background: var(--surface-muted); }
+.progress-bar { border-radius: inherit; background: color-mix(in oklab, var(--accent) 62%, var(--surface)); }
+
+@media (max-width: 1024px) {
+  .top-header { padding: 0 16px; }
+  .header-left h1 { font-size: 0.85rem; }
+  .datetime { font-size: 0.75rem; }
+  .content { padding: 16px; }
+}
+@media (max-width: 768px) {
+  .datetime { display: none; }
+}
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }

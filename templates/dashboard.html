@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{# Angka utama ringkas agar muat di kartu sempit; angka lengkap tetap terlihat di baris bawah #}
+{% macro stat(label, value, full=none) %}
+<div class="col-12 col-sm-6 col-xl">
+  <div class="card h-100"><div class="card-body">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm">{{ value }}</div>
+    {% if full and full != value %}<div class="stat-sub">{{ full }}</div>{% endif %}
+  </div></div>
+</div>
+{% endmacro %}
+
+{% macro empty(text, href, action) %}
+<div class="empty">{{ text }}<br><a href="{{ href }}">{{ action }}</a></div>
+{% endmacro %}
+
+{% block content %}
+<div class="row g-3 mb-3">
+  {{ stat("Total proyek", totals.n) }}
+  {{ stat("Nilai kontrak", totals.contract|rp_short, totals.contract|rp) }}
+  {{ stat("Estimasi biaya", totals.cost|rp_short, totals.cost|rp) }}
+  {{ stat("Estimasi margin (" ~ "%.1f"|format(margin_pct) ~ "%)", margin|rp_short, margin|rp) }}
+  {{ stat("Total sales", total_sales|rp_short, total_sales|rp) }}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-7">
+    <div class="card card-donut h-100">
+      <div class="card-header">Sales per bulan</div>
+      <div class="card-body">
+        {% if month_labels %}<div id="salesChart"></div>
+        {% else %}{{ empty("Belum ada data sales.", url_for("sales"), "Tambah penjualan") }}{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card card-donut h-100">
+      <div class="card-header">Status proyek</div>
+      <div class="card-body">
+        {% if totals.n %}<div id="statusChart"></div>
+        {% else %}{{ empty("Belum ada data proyek.", url_for("projects"), "Tambah proyek") }}{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Produk terlaris</div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Produk</th><th class="text-end">Qty</th><th class="text-end">Revenue</th></tr></thead>
+          <tbody>
+            {% for p in top_products %}
+            <tr><td>{{ p.product }}</td><td class="text-end">{{ p.qty|num }}</td><td class="text-end">{{ p.total|rp }}</td></tr>
+            {% else %}
+            <tr><td colspan="3">{{ empty("Belum ada data sales.", url_for("sales"), "Tambah penjualan") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Revenue per lokasi</div>
+      <div class="card-body">
+        {% for l in locations %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between mb-1"><span>{{ l.location }}</span><span class="text-body-emphasis">{{ l.total|rp }}</span></div>
+          <div class="progress"><div class="progress-bar" style="width: {{ (l.total / max_location * 100) if max_location else 0 }}%"></div></div>
+        </div>
+        {% else %}
+        {{ empty("Belum ada data sales.", url_for("sales"), "Tambah penjualan") }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between">
+    <span>Proyek terbaru</span>
+    <a href="{{ url_for('projects') }}" class="fw-normal small">Lihat semua</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr><th>Proyek</th><th>Klien</th><th>Status</th><th class="text-end">Kontrak</th><th class="text-end">Est. biaya</th><th class="text-end">Est. margin</th></tr></thead>
+      <tbody>
+        {% for p in recent %}
+        <tr>
+          <td class="text-body-emphasis">{{ p.name }}</td><td>{{ p.client }}</td><td>{{ p.status|capitalize }}</td>
+          <td class="text-end">{{ p.contract_value|rp }}</td>
+          <td class="text-end">{{ p.est_cost|rp }}</td>
+          <td class="text-end">{{ (p.contract_value - p.est_cost)|rp }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">{{ empty("Belum ada data proyek.", url_for("projects"), "Tambah proyek") }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const rp = (v) => "Rp " + Math.round(v).toLocaleString("id-ID");
+  const rpShort = (v) => "Rp " + new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(v);
+  const salesEl = document.getElementById("salesChart");
+  if (salesEl) Arc.bar(salesEl, {
+    label: "Sales per bulan", labels: {{ month_labels|tojson }}, values: {{ month_values|tojson }},
+    kind: "Rata-rata per bulan", format: rp, tickFormat: rpShort,
+  });
+  const statusEl = document.getElementById("statusChart");
+  // Warna status: belum mulai netral, berjalan biru, selesai hijau, batal merah
+  const statusColors = ["var(--text-muted)", "var(--cat-1)", "var(--success)", "var(--danger)"];
+  if (statusEl) Arc.donut(statusEl, {
+    label: "Status proyek", totalLabel: "Total proyek", format: (v) => `${v} proyek`, groupBelow: 0,
+    items: {{ status_labels|map("capitalize")|list|tojson }}.map((label, i) => ({ key: label, label, value: {{ status_values|tojson }}[i], color: statusColors[i] })),
+  });
+</script>
+{% endblock %}

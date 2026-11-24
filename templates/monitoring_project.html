@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+
+{% block content %}
+<style>
+  .xl-tabs { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; }
+</style>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+  <span class="small text-body-secondary" title="{{ p.xlsx_path }}">{{ file_name }}{% if imported_at %} · diimpor {{ imported_at|waktu }}{% endif %}{% if n_edits %} · {{ n_edits }} sel diedit{% endif %}</span>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <form method="post" action="{{ url_for('monitoring_reimport', pid=p.id) }}" class="d-flex">
+      <span class="arc-cm" data-confirm="Impor ulang" data-prompt="Impor ulang dari file Excel? {% if n_edits %}{{ n_edits }} sel yang sudah diedit akan kembali ke isi file.{% else %}Isi sheet diganti dengan isi file terbaru.{% endif %}"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+        <button type="button" class="arc-cm-trigger" aria-label="Impor ulang dari file Excel" title="Impor ulang dari file"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>
+      </span></span></span>
+    </form>
+    <a class="btn btn-outline-secondary" href="{{ url_for('pum_list', pid=p.id) }}"><i class="bi bi-cash-coin" aria-hidden="true"></i> PUM</a>
+    <button type="button" class="btn btn-outline-secondary" data-disclosure="edit-monitoring" aria-controls="edit-monitoring"
+      aria-expanded="{{ 'true' if open_edit else 'false' }}"><i class="bi bi-pencil" aria-hidden="true"></i> Edit data proyek</button>
+  </div>
+</div>
+{% if saved %}<div class="alert alert-success py-2" role="status">Perubahan tersimpan, angka sudah dihitung ulang.</div>{% endif %}
+{% if edit_error and not open_edit %}<div class="alert alert-danger py-2">{{ edit_error }}</div>{% endif %}
+
+<div class="card mb-3" id="edit-monitoring" {% if not open_edit %}hidden{% endif %}>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Edit data proyek</span>
+    <button type="button" class="arc-icon-btn" data-disclosure-close aria-label="Tutup form edit proyek"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="card-body">
+    {% if edit_error %}<div class="alert alert-danger py-2">{{ edit_error }}</div>{% endif %}
+    <form method="post" action="{{ url_for('monitoring_edit', pid=p.id) }}" class="row g-3">
+      <div class="col-md-4"><label class="form-label" for="e-name">Nama proyek (di daftar)</label>
+        <input id="e-name" name="name" value="{{ p.name }}" class="form-control" required></div>
+      <div class="col-md-8"><label class="form-label" for="e-path">Path file Excel (untuk impor ulang)</label>
+        <input id="e-path" name="xlsx_path" value="{{ p.xlsx_path }}" class="form-control" required></div>
+      {% for key, label, kind, computed in info_fields %}
+      <div class="col-md-6 col-lg-4"><label class="form-label" for="e-{{ key }}">{{ label }}{% if computed %} <span class="text-body-secondary">(rumus)</span>{% endif %}</label>
+        {% if kind == 'number' %}
+        <div class="input-group"><span class="input-group-text">Rp</span>
+          <input id="e-{{ key }}" {% if not computed %}name="{{ key }}"{% endif %} type="number" min="0" step="any" class="form-control"
+            value="{{ '%.0f'|format(info[key]) if info[key] is number else '' }}" {% if computed %}disabled{% endif %}></div>
+        {% else %}
+        <input id="e-{{ key }}" {% if not computed %}name="{{ key }}"{% endif %} type="{{ kind }}" class="form-control"
+          value="{{ info[key] or '' }}" {% if computed %}disabled{% endif %}>
+        {% endif %}</div>
+      {% endfor %}
+      <div class="col-12 form-text m-0">Data proyek tersimpan di sheet Data Project (tidak tampil sebagai tab) dan dipakai rumus di semua sheet.</div>
+      <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan perubahan</button>
+        <button type="button" class="btn btn-outline-secondary" data-disclosure-close>Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-warning">{{ error }} Perbaiki path lewat Edit data proyek, lalu Impor ulang dari file.</div>
+{% else %}
+{% if summary %}{% include "_monitoring_summary.html" %}{% endif %}
+<nav class="nav nav-pills xl-tabs mb-3" aria-label="Sheet">
+  {% for title in sheets %}
+  <a class="nav-link {% if loop.index0 == sheet_idx %}active{% endif %}" {% if loop.index0 == sheet_idx %}aria-current="page"{% endif %}
+    href="{{ url_for('monitoring_project', pid=p.id, sheet_idx=loop.index0) }}">{{ title }}</a>
+  {% endfor %}
+</nav>
+
+{% for ch in sheet.charts %}
+<div class="card mb-3">
+  <div class="card-header">{{ ch.title }}</div>
+  <div class="card-body"><div id="xl-chart-{{ loop.index0 }}"></div></div>
+</div>
+{% endfor %}
+
+{% with cell_url = url_for('monitoring_cell', pid=p.id, sheet_idx=sheet_idx),
+        rows_url = url_for('monitoring_rows', pid=p.id, sheet_idx=sheet_idx) if sheet.is_list else none,
+        reset_label = 'Kembalikan isi file' %}{% include "_sheet_table.html" %}{% endwith %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Tab sheet aktif bisa berada di luar layar: geser ke tengah
+  const activeTab = document.querySelector(".xl-tabs .active");
+  if (activeTab) activeTab.parentElement.scrollLeft = activeTab.offsetLeft - (activeTab.parentElement.clientWidth - activeTab.offsetWidth) / 2;
+</script>
+{% if sheet and sheet.charts %}{% with charts = sheet.charts %}{% include "_monitoring_charts.html" %}{% endwith %}{% endif %}
+{% endblock %}

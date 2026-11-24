@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.no_pum or 'PUM baru' }} · {{ p.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+  <a class="back-link" href="{{ url_for('pum_list', pid=p.id) }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Daftar PUM</a>
+  <div class="d-flex flex-wrap align-items-center gap-3">
+    <span class="small text-body-secondary">{{ doc.doc_date|tanggal if doc.doc_date else 'Belum bertanggal' }} · total {{ doc.total|rp }}</span>
+    <a class="btn btn-outline-secondary" href="{{ url_for('pum_pdf', pid=p.id, doc_id=doc.id) }}" target="_blank" rel="noopener">
+      <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> Export PDF</a>
+  </div>
+</div>
+{% if saved %}<div class="alert alert-success py-2" role="status">Tersimpan. Total dan Actual Cost sudah dihitung ulang.</div>{% endif %}
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+{% if not doc.doc_date %}<div class="alert alert-secondary py-2">Isi Tanggal / Date (sel C6) supaya PUM ini masuk ke Actual Cost.</div>{% endif %}
+
+{% include "_doc_header.html" %}
+{% with cell_url = url_for('pum_cell', pid=p.id, doc_id=doc.id), rows_url = none, reset_label = none %}
+{% include "_sheet_table.html" %}
+{% endwith %}
+
+{# Tanda tangan: tersimpan per nama, dipakai ulang di PUM lain. Tampil hanya bila nama di PUM sama dengan yang menandatangani. #}
+<div class="card mt-3" id="ttd">
+  <div class="card-header">Tanda tangan</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for slot in slots %}
+      <div class="col-lg-6">
+        <div class="border rounded-3 p-3 h-100">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+            <div>
+              <div class="small text-body-secondary">{{ slot.label }}</div>
+              <div class="fw-medium text-body-emphasis">{{ slot.name or '—' }}</div>
+              <div class="small {{ 'text-success' if slot.signed else 'text-body-secondary' }}">
+                {% if slot.signed %}<i class="bi bi-check-circle" aria-hidden="true"></i> Sudah ditandatangani di PUM ini{% elif slot.signature %}Tanda tangan tersedia, belum dipasang{% else %}Belum ada tanda tangan untuk nama ini{% endif %}
+              </div>
+            </div>
+            {% if slot.signature %}<img class="ttd-preview" src="{{ url_for('signature_image', sid=slot.signature.id, v=slot.signature.updated_at) }}" alt="Tanda tangan {{ slot.name }}">{% endif %}
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            {% if slot.signature %}
+            <form method="post" action="{{ url_for('pum_sign', pid=p.id, doc_id=doc.id) }}">
+              <input type="hidden" name="slot" value="{{ slot.key }}"><input type="hidden" name="action" value="{{ 'unsign' if slot.signed else 'sign' }}">
+              <button class="btn btn-sm {{ 'btn-outline-secondary' if slot.signed else 'btn-primary' }}">
+                <i class="bi {{ 'bi-x-lg' if slot.signed else 'bi-pen' }}" aria-hidden="true"></i> {{ 'Lepas tanda tangan' if slot.signed else 'Tanda tangani' }}</button>
+            </form>
+            {% endif %}
+            {% if slot.name %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-disclosure="ttd-{{ slot.key }}" aria-controls="ttd-{{ slot.key }}" aria-expanded="false">
+              <i class="bi bi-gear" aria-hidden="true"></i> {{ 'Ganti' if slot.signature else 'Buat' }} tanda tangan</button>
+            {% endif %}
+          </div>
+          {% if slot.name %}
+          <div id="ttd-{{ slot.key }}" class="mt-3" hidden>
+            <form method="post" action="{{ url_for('signature_save') }}" enctype="multipart/form-data" class="d-grid gap-2" data-ttd-form>
+              <input type="hidden" name="name" value="{{ slot.name }}">
+              <input type="hidden" name="back" value="{{ url_for('pum_doc', pid=p.id, doc_id=doc.id) }}">
+              <input type="hidden" name="drawn">
+              <label class="form-label mb-0">Gambar tanda tangan {{ slot.name }}</label>
+              <canvas class="ttd-pad" width="480" height="160" aria-label="Area menggambar tanda tangan"></canvas>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-ttd-clear><i class="bi bi-eraser" aria-hidden="true"></i> Bersihkan</button>
+                <span class="small text-body-secondary">atau upload gambar:</span>
+                <input type="file" name="image" accept="image/png,image/jpeg" class="form-control form-control-sm" style="max-width: 260px" aria-label="Upload gambar tanda tangan">
+              </div>
+              <div class="form-text m-0">PNG/JPG maks 1 MB; sebaiknya tinta gelap di latar putih/transparan. Tersimpan untuk nama ini dan bisa dipakai di PUM lain.</div>
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-primary"><i class="bi bi-check-lg" aria-hidden="true"></i> Simpan tanda tangan</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-disclosure-close>Batal</button>
+              </div>
+            </form>
+            {% if slot.signature %}
+            <form method="post" action="{{ url_for('signature_delete', sid=slot.signature.id) }}" class="mt-2">
+              <input type="hidden" name="back" value="{{ url_for('pum_doc', pid=p.id, doc_id=doc.id) }}">
+              <span class="arc-cm" data-confirm="Hapus" data-prompt="Hapus tanda tangan {{ slot.name }}? Hilang juga dari PUM lain."><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus tanda tangan {{ slot.name }}" title="Hapus tanda tangan tersimpan"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12 small text-body-secondary">Format PUM ini tidak punya blok "Disetujui oleh" / "Diajukan oleh".</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<style>
+  .doc-header { display: flex; align-items: center; justify-content: space-between; min-height: 64px; margin-bottom: 12px;
+                padding: 8px 20px; border-radius: var(--radius-surface); background: #C00000; }
+  .doc-header-tagline { color: #fff; font-size: 17px; font-weight: 700; font-style: italic; line-height: 1.25; }
+  .doc-header-logo { height: 40px; }
+  .ttd-preview { max-width: 160px; max-height: 56px; mix-blend-mode: multiply; }
+  [data-theme="dark"] .ttd-preview { filter: invert(1); mix-blend-mode: screen; }
+  .ttd-pad { width: 100%; max-width: 480px; height: 160px; border: 1px dashed var(--border-strong); border-radius: 12px;
+             background: #fff; touch-action: none; cursor: crosshair; }
+</style>
+
+{% if categories %}
+<div class="card mt-3">
+  <div class="card-header">Masuk ke Actual Cost{% if doc.doc_date %} · {{ doc.doc_date[:7]|bulan }}{% endif %}</div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <tbody>
+        {% for cat, amt in categories.items() %}
+        <tr><td>{{ cat }}</td><td class="text-end text-nowrap">{{ amt|rp }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Papan tanda tangan: gambar dengan mouse/jari/stylus; hasil PNG transparan dikirim lewat field "drawn"
+  document.querySelectorAll("[data-ttd-form]").forEach((form) => {
+    const pad = form.querySelector(".ttd-pad"), ctx = pad.getContext("2d");
+    const ratio = window.devicePixelRatio || 1;
+    pad.width = 480 * ratio; pad.height = 160 * ratio; ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2; ctx.lineCap = ctx.lineJoin = "round"; ctx.strokeStyle = "#111";
+    let drawing = false, drawn = false;
+    const at = (e) => { const r = pad.getBoundingClientRect(); return [(e.clientX - r.left) * 480 / r.width, (e.clientY - r.top) * 160 / r.height]; };
+    pad.addEventListener("pointerdown", (e) => { drawing = true; pad.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...at(e)); });
+    pad.addEventListener("pointermove", (e) => { if (!drawing) return; ctx.lineTo(...at(e)); ctx.stroke(); drawn = true; });
+    ["pointerup", "pointercancel"].forEach((t) => pad.addEventListener(t, () => (drawing = false)));
+    form.querySelector("[data-ttd-clear]").addEventListener("click", () => { ctx.clearRect(0, 0, 480, 160); drawn = false; });
+    form.addEventListener("submit", () => { form.elements.drawn.value = drawn ? pad.toDataURL("image/png") : ""; });
+  });
+</script>
+
+{% endblock %}

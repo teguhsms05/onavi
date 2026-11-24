@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <span class="small text-body-secondary">Input sendiri</span>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('pum_list', pid=p.id) }}"><i class="bi bi-cash-coin" aria-hidden="true"></i> PUM</a>
+    <button type="button" class="btn btn-outline-secondary" data-disclosure="edit-monitoring" aria-controls="edit-monitoring"
+      aria-expanded="{{ 'true' if open_edit else 'false' }}"><i class="bi bi-pencil" aria-hidden="true"></i> Edit data proyek</button>
+  </div>
+</div>
+{% if saved %}<div class="alert alert-success py-2" role="status">Perubahan tersimpan.</div>{% endif %}
+{% if edit_error and not open_edit %}<div class="alert alert-danger py-2">{{ edit_error }}</div>{% endif %}
+
+<div class="card mb-3" id="edit-monitoring" {% if not open_edit %}hidden{% endif %}>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Edit data proyek</span>
+    <button type="button" class="arc-icon-btn" data-disclosure-close aria-label="Tutup form edit"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="card-body">
+    {% if edit_error %}<div class="alert alert-danger py-2">{{ edit_error }}</div>{% endif %}
+    <form method="post" action="{{ url_for('monitoring_edit', pid=p.id) }}" class="row g-3">
+      <div class="col-md-6 col-lg-4"><label class="form-label" for="e-name">Nama proyek (di daftar)</label>
+        <input id="e-name" name="name" value="{{ p.name }}" class="form-control" required></div>
+      {% for key, label, kind in fields %}
+      <div class="col-md-6 col-lg-4"><label class="form-label" for="e-{{ key }}">{{ label }}</label>
+        {% if kind == 'number' %}
+        <div class="input-group"><span class="input-group-text">Rp</span>
+          <input id="e-{{ key }}" name="{{ key }}" type="number" min="0" step="any" class="form-control"
+            value="{{ '%.0f'|format(info[key]) if info[key] is number else '' }}"></div>
+        {% else %}
+        <input id="e-{{ key }}" name="{{ key }}" type="{{ kind }}" class="form-control" value="{{ info[key] or '' }}">
+        {% endif %}</div>
+      {% endfor %}
+      <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan perubahan</button>
+        <button type="button" class="btn btn-outline-secondary" data-disclosure-close>Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Data proyek</div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <tbody>
+        {% for key, label, kind in fields %}
+        <tr><td class="text-body-secondary" style="width: 260px">{{ label }}</td>
+          <td class="text-body-emphasis">
+            {%- if info[key] is number -%}{{ info[key]|rp }}
+            {%- elif kind == 'date' and info[key] -%}{{ info[key]|tanggal }}
+            {%- else -%}{{ info[key] or '-' }}{%- endif -%}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% include "_monitoring_summary.html" %}
+
+{% for ch in charts %}
+<div class="card mb-3">
+  <div class="card-header">{{ ch.title }}</div>
+  <div class="card-body"><div id="xl-chart-{{ loop.index0 }}"></div></div>
+</div>
+{% endfor %}
+
+<div class="card">
+  <div class="card-header">Cost bulanan</div>
+  <div class="card-body border-bottom">
+    <form method="post" action="{{ url_for('monitoring_cost_save', pid=p.id) }}" class="row g-3 align-items-end" id="cost-form">
+      <div class="col-md-3"><label class="form-label" for="c-month">Bulan</label>
+        <input id="c-month" name="month" type="month" class="form-control" required></div>
+      <div class="col-md-3"><label class="form-label" for="c-plan">Cost rencana</label>
+        <input id="c-plan" name="plan" type="number" min="0" step="any" class="form-control" placeholder="0"></div>
+      <div class="col-md-3"><label class="form-label" for="c-actual">Cost actual</label>
+        <input id="c-actual" name="actual" type="number" min="0" step="any" class="form-control" placeholder="0"></div>
+      <div class="col-md-3"><label class="form-label" for="c-cash">Cash-in</label>
+        <input id="c-cash" name="cash_in" type="number" min="0" step="any" class="form-control" placeholder="0"></div>
+      <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan</button>
+        <span class="form-text m-0">Bulan yang sudah ada akan diperbarui.</span>
+      </div>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table align-middle text-nowrap mb-0">
+      <thead><tr><th>Bulan</th><th class="text-end">Cost rencana</th><th class="text-end">Cost actual</th><th class="text-end">Cash-in</th>
+        <th class="text-end">Kum. rencana</th><th class="text-end">Kum. actual</th><th class="text-end">Kum. cash-in</th><th class="text-end">Deviasi</th><th></th></tr></thead>
+      <tbody>
+        {% for c in costs %}
+        <tr>
+          <td>{{ c.month|bulan }}</td><td class="text-end">{{ c.plan|rp }}</td><td class="text-end">{{ c.actual|rp }}{% if c.pum %}<div class="small text-body-secondary">PUM {{ c.pum|rp }}</div>{% endif %}</td><td class="text-end">{{ c.cash_in|rp }}</td>
+          <td class="text-end">{{ c.cum_plan|rp }}</td><td class="text-end">{{ c.cum_actual|rp }}</td><td class="text-end">{{ c.cum_cash_in|rp }}</td>
+          <td class="text-end {% if c.deviation < 0 %}text-danger{% endif %}">{{ c.deviation|rp }}</td>
+          <td class="text-end text-nowrap">
+            <button type="button" class="arc-icon-btn" title="Edit" aria-label="Edit cost {{ c.month|bulan }}" data-cost-edit
+              data-month="{{ c.month }}" data-plan="{{ '%.0f'|format(c.plan) }}" data-actual="{{ '%.0f'|format(c.actual - c.pum) }}" data-cash="{{ '%.0f'|format(c.cash_in) }}"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+            {% if c.id %}
+            <form method="post" action="{{ url_for('monitoring_cost_delete', pid=p.id, cost_id=c.id) }}" class="d-inline">
+              <span class="arc-cm" data-prompt="Hapus cost {{ c.month|bulan }}?"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus cost {{ c.month|bulan }}" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="empty">Belum ada cost bulanan. Isi form di atas untuk menambah.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if costs %}
+      <tfoot><tr class="fw-medium text-body-emphasis">
+        <td>TOTAL</td><td class="text-end">{{ total.plan|rp }}</td><td class="text-end">{{ total.actual|rp }}</td><td class="text-end">{{ total.cash_in|rp }}</td>
+        <td colspan="3"></td><td class="text-end {% if summary.deviation < 0 %}text-danger{% endif %}">{{ summary.deviation|rp }}</td><td></td>
+      </tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Edit cost: isi form dengan baris yang dipilih, lalu simpan = perbarui bulan itu
+  document.querySelectorAll("[data-cost-edit]").forEach((b) => b.addEventListener("click", () => {
+    const set = (id, v) => (document.getElementById(id).value = v);
+    set("c-month", b.dataset.month); set("c-plan", b.dataset.plan); set("c-actual", b.dataset.actual); set("c-cash", b.dataset.cash);
+    document.getElementById("cost-form").scrollIntoView({ block: "center" });
+    document.getElementById("c-plan").focus();
+  }));
+</script>
+{% if charts %}{% include "_monitoring_charts.html" %}{% endif %}
+{% endblock %}

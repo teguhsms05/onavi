@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# Judul dipakai browser sebagai nama file PDF #}
+  <title>{{ (doc.no_pum or 'PUM').replace('/', '-') }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fff; color: #111; font: 10.5px/1.35 "Inter", Arial, sans-serif; font-variant-numeric: tabular-nums; }
+    .sheet { max-width: 190mm; margin: 0 auto; }
+    table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    td { padding: 2px 5px; vertical-align: middle; overflow-wrap: anywhere; }
+    tr { break-inside: avoid; }
+    td.num, td.spill { white-space: nowrap; overflow-wrap: normal; }
+    td.big { font-size: 13px; font-weight: 600; }
+    td.bold { font-weight: 600; }
+    td.head { color: #fff; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    td.xb-l1 { border-left: 1px solid #555; } td.xb-l2 { border-left: 2px solid #111; }
+    td.xb-r1 { border-right: 1px solid #555; } td.xb-r2 { border-right: 2px solid #111; }
+    td.xb-t1 { border-top: 1px solid #555; } td.xb-t2 { border-top: 2px solid #111; }
+    td.xb-b1 { border-bottom: 1px solid #555; } td.xb-b2 { border-bottom: 2px solid #111; }
+    tr.blank td { padding-top: 0; padding-bottom: 0; height: 8px; }
+    /* Tanda tangan: jarak dari tabel, ruang tanda tangan lebih tinggi, teks sedikit lebih besar */
+    tr:not(.sign) + tr.sign > td { padding-top: 26px; }
+    tr.sign > td { padding-top: 2px; padding-bottom: 2px; font-size: 11px; }
+    tr.sign.blank > td { height: 18px; }
+    td.colon::after { content: ":"; float: right; padding-left: 6px; }
+    img.sign { display: block; max-width: 100%; height: 54px; margin: 0 auto; object-fit: contain; mix-blend-mode: multiply; }
+    .toolbar { display: flex; justify-content: flex-end; gap: 8px; max-width: 190mm; margin: 16px auto; }
+    .toolbar button { padding: 8px 14px; border: 1px solid #ccc; border-radius: 999px; background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+    .toolbar button.primary { border-color: #c32836; background: #c32836; color: #fff; }
+    @media print { .toolbar { display: none; } }
+    /* Kop dokumen */
+    .doc-header { display: flex; align-items: center; justify-content: space-between; height: 15mm; margin-bottom: 4mm;
+                  padding: 0 4mm; background: #C00000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .doc-header-tagline { color: #fff; font-size: 13px; font-weight: 700; font-style: italic; line-height: 1.2; }
+    .doc-header-logo { height: 10mm; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="history.length > 1 ? history.back() : window.close()">Kembali</button>
+    <button type="button" class="primary" onclick="window.print()">Simpan sebagai PDF</button>
+  </div>
+  <main class="sheet">
+    {% include "_doc_header.html" %}
+    <table>
+      <colgroup>{% for w in widths %}<col style="width: {{ (w / widths|sum * 100)|round(3) }}%">{% endfor %}</colgroup>
+      <tbody>
+        {% for row in rows %}
+        <tr class="{% if row.cells|map(attribute='text')|join('') == '' %}blank{% endif %}{% if row.sign %} sign{% endif %}">
+          {% for c in row.cells %}
+          <td{% if c.rowspan > 1 %} rowspan="{{ c.rowspan }}"{% endif %}{% if c.colspan > 1 %} colspan="{{ c.colspan }}"{% endif %}
+            style="{% if c.fill and c.fill != 'theme' and c.on_fill %}background: {{ c.fill }};{% endif %}{% if c.align %}text-align: {{ c.align }}{% endif %}"
+            class="{{ c.borders }}{% if c.fill and c.on_fill %} head{% endif %}{% if c.big %} big{% elif c.bold %} bold{% endif %}{% if c.num %} num{% elif c.spill %} spill{% endif %}{% if c.colon %} colon{% endif %}">{% if c.img %}<img class="sign" src="{{ c.img }}" alt="Tanda tangan">{% endif %}{{ c.text }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+  <script>
+    // Satu halaman utuh: bila isi lebih tinggi dari area cetak A4 (297mm - margin 2 x 10mm), perkecil proporsional
+    const sheet = document.querySelector(".sheet");
+    const fitPage = () => {
+      sheet.style.zoom = "";
+      const available = (297 - 20) * 96 / 25.4 - 4;  // px CSS, sisa 4px agar tidak tumpah karena pembulatan
+      const height = sheet.getBoundingClientRect().height;
+      if (height > available) sheet.style.zoom = (available / height).toFixed(4);
+    };
+    fitPage();
+    window.addEventListener("beforeprint", fitPage);
+
+    // Buka dialog cetak setelah font siap; pilih "Simpan sebagai PDF" di dialog. ?cetak=0 = pratinjau saja.
+    if (new URLSearchParams(location.search).get("cetak") !== "0")
+      (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(() => { fitPage(); window.print(); }, 150));
+    else if (document.fonts) document.fonts.ready.then(fitPage);
+  </script>
+</body>
+</html>

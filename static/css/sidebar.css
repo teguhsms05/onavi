@@ -1,0 +1,523 @@
+/* ═══════════════════════════════════════════════════════════════
+   App sidebar (static/js/sidebar.js)
+   Desktop: full sidebar that folds into an icon rail ([ key or the header button),
+   with tooltips and flyouts for groups while folded. Rail state persists per browser.
+   ≤1024px: the sidebar becomes a sheet that slides in from the left (drag left to close).
+   Behaviour follows the public description of Arc's sidebar-rail block; the code is our own.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --sb-w: 260px;
+  --sb-rail: 72px;
+  --sb-ease: cubic-bezier(.32, .72, 0, 1);
+  --sb-dur: 260ms;
+  --sb-text: rgba(255, 255, 255, .62);
+  --sb-text-strong: #ffffff;
+  --sb-text-muted: rgba(255, 255, 255, .42);
+  --sb-hover: rgba(255, 255, 255, .06);
+  --sb-active: rgba(255, 255, 255, .1);
+  --sb-line: rgba(255, 255, 255, .09);
+}
+
+/* First paint restores the rail without animating into it */
+html.sb-booting .sidebar,
+html.sb-booting .sidebar *,
+html.sb-booting .main-content { transition: none !important; }
+
+/* ── Shell ── */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: var(--sb-w);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-sidebar);
+  color: var(--sb-text);
+  overflow: hidden;
+  transition: width var(--sb-dur) var(--sb-ease);
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--sb-w);
+  transition: margin-left var(--sb-dur) var(--sb-ease);
+}
+
+html.sb-rail .sidebar { width: var(--sb-rail); }
+html.sb-rail .main-content { margin-left: var(--sb-rail); }
+
+/* ── Brand: logo centred in the open sidebar ── */
+.sidebar-header {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: var(--header-height);
+  padding: 0 10px;
+  border-block-end: 1px solid var(--sb-line);
+}
+
+/* collapsed rail: only the mark, at the start (the hidden name must not push it out of the 72 px rail) */
+html.sb-rail .sidebar-header { justify-content: flex-start; }
+
+/* the mobile close button sits at the edge, so it never moves the centred logo */
+.sidebar-header .sidebar-mobile-close { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+
+/* ── Partner logo at the foot of the sidebar ── */
+/* quiet: the label sits on the sidebar like a nav category, only the logo gets a small light plate
+   (the logo is dark text, so it needs one on the dark sidebar), no shadow */
+.sidebar-partner {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 16px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sb-line);
+}
+.sidebar-partner[hidden] { display: none; }
+.sidebar-partner-label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--sb-text-muted, rgba(255, 255, 255, .55)); }
+.sidebar-partner img {
+  display: block; box-sizing: content-box; max-width: calc(100% - 20px); height: 20px; width: auto; object-fit: contain;
+  padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .92);
+}
+.sidebar-partner-mark { display: none !important; }
+
+/* collapsed rail: the symbol only, centred in the 72 px rail */
+html.sb-rail .sidebar-partner { align-items: center; margin: 6px 10px 14px; }
+html.sb-rail .sidebar-partner-label,
+html.sb-rail .sidebar-partner-logo { display: none; }
+html.sb-rail .sidebar-partner-mark { display: block !important; height: 24px; padding: 6px 9px; }
+
+.logo {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo > img {
+  flex: none;
+  width: 52px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.logo-text {
+  display: block;
+  min-width: 0;
+  transition: opacity 160ms ease;
+}
+
+.logo-text img { display: block; height: 44px; width: auto; }
+
+html.sb-rail .logo-text { opacity: 0; pointer-events: none; }
+
+/* ── Nav ── */
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 0 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.sidebar-nav::-webkit-scrollbar { display: none; }
+
+.nav-category {
+  position: relative;
+  height: 16px;
+  margin: 18px 12px 6px;
+  padding: 0 14px;
+  color: var(--sb-text-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: color 160ms ease;
+}
+
+.sidebar-nav > .nav-category:first-child { margin-top: 10px; }
+
+/* Folded: a section label becomes a short divider */
+.nav-category::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--sb-line);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+html.sb-rail .nav-category { color: transparent; }
+html.sb-rail .nav-category::after { opacity: 1; }
+
+/* Rows keep the icon at a fixed x, so folding never moves it */
+.nav-item {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  height: 38px;
+  align-items: center;
+  gap: 12px;
+  margin: 1px 12px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sb-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover { background: var(--sb-hover); color: var(--sb-text-strong); }
+}
+
+.nav-item:active { background: var(--sb-active); }
+
+.nav-item[aria-current="page"] {
+  background: var(--sb-active);
+  color: var(--sb-text-strong);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+/* A group holding the current page: brighter label; while folded it carries the highlight */
+.submenu-toggle.active { color: var(--sb-text-strong); }
+html.sb-rail .submenu-toggle.active { background: var(--sb-active); box-shadow: inset 3px 0 0 var(--primary); }
+
+.nav-item .icon {
+  display: inline-grid;
+  width: 20px;
+  flex: none;
+  place-items: center;
+  font-size: 15px;
+}
+
+.nav-item .label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 160ms ease;
+}
+
+.nav-item .arrow {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  margin: 0;
+  color: inherit;
+  font-size: 10px;
+  opacity: .55;
+  transition: transform var(--sb-dur) var(--sb-ease), opacity 160ms ease;
+}
+
+.submenu-toggle[aria-expanded="true"] .arrow { transform: rotate(90deg); }
+
+html.sb-rail .nav-item .label,
+html.sb-rail .nav-item .arrow { opacity: 0; }
+
+.nav-item:focus { outline: none; }
+.nav-item:focus-visible,
+.submenu-item:focus-visible,
+.sb-flyout a:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, .75);
+  outline-offset: -2px;
+}
+
+/* ── Nested groups expand by height (JS animates the height) ── */
+.submenu {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  transition: height var(--sb-dur) var(--sb-ease);
+}
+
+.has-submenu.open > .submenu { height: auto; }
+html.sb-rail .submenu { display: none; }
+
+/* Guide line under the group icon */
+.submenu::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 35.5px;
+  width: 1px;
+  background: var(--sb-line);
+}
+
+.submenu-item {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  height: 34px;
+  align-items: center;
+  margin: 1px 12px;
+  padding: 0 14px 0 46px;   /* text lines up with the group label */
+  border-radius: 8px;
+  color: var(--sb-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.submenu > .submenu-item:first-of-type { margin-top: 2px; }
+.submenu > .submenu-item:last-of-type { margin-bottom: 4px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .submenu-item:hover { background: var(--sb-hover); color: var(--sb-text-strong); }
+}
+
+.submenu-item[aria-current="page"] {
+  background: var(--sb-hover);
+  color: var(--sb-text-strong);
+}
+
+/* The current child marks the guide line */
+.submenu-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 22.5px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+
+.submenu-item:focus { outline: none; }
+
+/* ── Header toggle (in the top bar) ── */
+.sidebar-toggle {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sidebar-toggle:hover { background: rgba(15, 23, 42, .06); color: var(--text-main); }
+  [data-theme="dark"] .sidebar-toggle:hover { background: rgba(255, 255, 255, .07); }
+}
+
+.sidebar-toggle:focus:not(:focus-visible) { outline: none; }
+
+/* Mobile close button: sheet only */
+.sidebar-mobile-close { display: none; margin-left: auto; }
+
+.sidebar-mobile-close button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, .6);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.sidebar-mobile-close button:hover { background: var(--sb-hover); color: #fff; }
+
+.sidebar-overlay { display: none; }
+
+/* ── Rail tooltip & group flyout (created by JS on <body>) ── */
+.sb-tip {
+  position: fixed;
+  z-index: 1100;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #0b1222;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25), 0 0 0 .5px rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition: opacity 120ms ease, transform 160ms var(--sb-ease);
+}
+
+.sb-tip[data-show] { opacity: 1; transform: translate(0, -50%); }
+
+.sb-flyout {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  min-width: 200px;
+  max-width: 260px;
+  max-height: calc(100vh - 24px);
+  padding: 6px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 14px 36px -8px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .08);
+  transform-origin: 0 18px;
+  opacity: 0;
+  transform: scale(.96);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.sb-flyout[data-show] {
+  opacity: 1;
+  transform: none;
+  transition: opacity 150ms ease, transform 220ms var(--sb-ease);
+}
+
+.sb-flyout-title {
+  padding: 6px 10px 6px;
+  color: var(--sb-text-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.sb-flyout a {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--sb-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  outline: none;
+}
+
+.sb-flyout a:hover,
+.sb-flyout a:focus { background: var(--sb-hover); color: #fff; }
+.sb-flyout a[aria-current="page"] { background: var(--sb-active); color: #fff; box-shadow: inset 3px 0 0 var(--primary); }
+
+/* ── ≤1024px: the sidebar becomes a sheet ── */
+@media (max-width: 1024px) {
+  .sidebar,
+  html.sb-rail .sidebar {
+    z-index: 1001;
+    width: min(288px, 86vw);
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: none;
+    touch-action: pan-y;
+    transition: transform 300ms var(--sb-ease), visibility 0s linear 300ms, box-shadow 300ms ease;
+  }
+
+  /* html.sb-rail .sidebar.mobile-open: tanpa ini, rail yang tersimpan menang dan sheet tak pernah muncul */
+  .sidebar.mobile-open,
+  html.sb-rail .sidebar.mobile-open {
+    transform: translateX(var(--sb-drag, 0px));
+    visibility: visible;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, .35);
+    transition: transform 360ms var(--sb-ease), visibility 0s, box-shadow 300ms ease;
+  }
+
+  .sidebar[data-dragging] { transition: none; }
+
+  .main-content,
+  html.sb-rail .main-content { margin-left: 0; }
+
+  /* the rail never applies to the sheet */
+  html.sb-rail .sidebar-header { justify-content: center; }
+  html.sb-rail .sidebar-partner { align-items: flex-start; margin: 6px 16px 14px; }
+  html.sb-rail .sidebar-partner[hidden] { display: none; }
+  html.sb-rail .sidebar-partner-label { display: block; }
+  html.sb-rail .sidebar-partner-logo { display: block; }
+  html.sb-rail .sidebar-partner-mark { display: none !important; }
+  html.sb-rail .logo-text,
+  html.sb-rail .nav-item .label,
+  html.sb-rail .nav-item .arrow { opacity: 1; pointer-events: auto; }
+  html.sb-rail .nav-item .arrow { opacity: .55; }
+  html.sb-rail .nav-category { color: var(--sb-text-muted); }
+  html.sb-rail .nav-category::after { opacity: 0; }
+  html.sb-rail .submenu { display: block; }
+  html.sb-rail .submenu-toggle.active { background: transparent; box-shadow: none; }
+
+  .sidebar-mobile-close { display: flex; }
+
+  .nav-item { height: 44px; font-size: 14px; }
+  .submenu-item { height: 40px; font-size: 13.5px; }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: block;
+    background: rgba(2, 6, 23, .45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sidebar-overlay.active { opacity: var(--sb-scrim, 1); pointer-events: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .main-content,
+  .submenu,
+  .nav-item,
+  .nav-item .arrow,
+  .nav-item .label,
+  .logo-text,
+  .nav-category,
+  .nav-category::after,
+  .sb-tip,
+  .sb-flyout,
+  .sb-flyout[data-show] { transition: none; }
+
+  @media (max-width: 1024px) {
+    .sidebar, html.sb-rail .sidebar { transition: visibility 0s linear 120ms; }
+    .sidebar.mobile-open { transition: none; }
+    .sidebar-overlay { transition: opacity 120ms ease; }
+  }
+}
+
+@media print {
+  .sb-tip, .sb-flyout, .sidebar-overlay { display: none !important; }
+}

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Proyek & kontrak{% endblock %}
+
+{# Angka utama ringkas agar muat di kartu sempit; angka lengkap tetap terlihat di baris bawah #}
+{% macro stat(label, value, sub=none) %}
+<div class="col-6 col-xl-3">
+  <div class="card h-100"><div class="card-body">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm">{{ value }}</div>
+    {% if sub and sub != value %}<div class="stat-sub">{{ sub }}</div>{% endif %}
+  </div></div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <button type="button" class="btn btn-primary" data-disclosure="add-project" aria-controls="add-project" aria-expanded="{{ 'true' if open_form else 'false' }}">
+    <i class="bi bi-plus-lg" aria-hidden="true"></i> Tambah proyek
+  </button>
+</div>
+
+{# Form tambah proyek: tersembunyi sampai tombol diklik; langsung terbuka setelah baca PDF atau bila ada error #}
+<div class="card mb-3" id="add-project" {% if not open_form %}hidden{% endif %}>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Tambah proyek</span>
+    <button type="button" class="arc-icon-btn" data-disclosure-close aria-label="Tutup form tambah proyek"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="card-body">
+    <div class="row g-4">
+      <div class="col-xl-4">
+        <form method="post" action="{{ url_for('project_read_pdf') }}" enctype="multipart/form-data" class="row g-3"
+              data-arc-progress="Membaca PDF dengan Gemini" data-busy-label="Membaca PDF…">
+          <div class="col-12"><label class="form-label">Isi otomatis dari PDF kontrak atau SPMK</label>
+            <input name="pdf" type="file" accept=".pdf" class="form-control" required
+                   data-arc-dropzone="Pilih PDF kontrak atau SPMK" data-note="PDF, satu file, maksimal 20 MB" data-max-mb="20"
+                   data-required="Pilih file PDF dulu, lalu tekan Baca PDF."></div>
+          <div class="col-12">
+            <button class="btn btn-outline-secondary w-100"><i class="bi bi-file-earmark-pdf"></i> Baca PDF</button>
+            <div class="form-text">PDF dikirim ke Gemini API (layanan luar) untuk dibaca. Proses beberapa detik.</div>
+          </div>
+        </form>
+        {% if pdf_error %}<div class="alert alert-danger py-2 mt-3 mb-0">{{ pdf_error }}</div>{% endif %}
+        {% if pdf_read %}<div class="alert alert-warning py-2 mt-3 mb-0">Form terisi dari PDF. Periksa dulu, lengkapi estimasi biaya dan status, lalu simpan.</div>{% endif %}
+      </div>
+
+      <div class="col-xl-8">
+        <form method="post" action="{{ url_for('projects') }}" class="row g-3">
+          <div class="col-12"><label class="form-label" for="p-name">Nama proyek</label>
+            <input id="p-name" name="name" value="{{ pre.name or '' }}" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label" for="p-client">Klien</label>
+            <input id="p-client" name="client" value="{{ pre.client or '' }}" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label" for="p-no">No. kontrak</label>
+            <input id="p-no" name="contract_no" value="{{ pre.contract_no or '' }}" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label" for="p-loc">Lokasi</label>
+            <input id="p-loc" name="location" value="{{ pre.location or '' }}" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label" for="p-status">Status</label>
+            <select id="p-status" name="status" class="form-select">{% for s in statuses %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label class="form-label" for="p-value">Nilai kontrak</label>
+            <div class="input-group"><span class="input-group-text">Rp</span>
+              <input id="p-value" name="contract_value" value="{{ '%.0f'|format(pre.contract_value) if pre.contract_value else '' }}" type="number" min="0" step="any" class="form-control" required></div></div>
+          <div class="col-md-6"><label class="form-label" for="p-cost">Estimasi biaya</label>
+            <div class="input-group"><span class="input-group-text">Rp</span>
+              <input id="p-cost" name="est_cost" type="number" min="0" step="any" class="form-control" required></div></div>
+          <div class="col-sm-6"><label class="form-label" for="p-start">Tanggal mulai</label>
+            <input id="p-start" name="start_date" value="{{ pre.start_date or '' }}" type="date" class="form-control"></div>
+          <div class="col-sm-6"><label class="form-label" for="p-end">Tanggal berakhir</label>
+            <input id="p-end" name="end_date" value="{{ pre.end_date or '' }}" type="date" class="form-control"></div>
+          <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+            <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan proyek</button>
+            <button type="button" class="btn btn-outline-secondary" data-disclosure-close>Batal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {{ stat("Jumlah proyek", summary.n) }}
+  {{ stat("Nilai kontrak", summary.contract|rp_short, summary.contract|rp) }}
+  {{ stat("Estimasi biaya", summary.cost|rp_short, summary.cost|rp) }}
+  {{ stat("Estimasi margin (" ~ "%.1f"|format(summary.margin_pct)|replace(".", ",") ~ "%)", summary.margin|rp_short, summary.margin|rp) }}
+</div>
+
+{% if rows %}
+<div class="row g-3 mb-3">
+  <div class="col-lg-7">
+    <div class="card card-donut h-100">
+      <div class="card-header">Nilai kontrak per proyek</div>
+      <div class="card-body"><div id="contractChart"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card card-donut h-100">
+      <div class="card-header">Komposisi total kontrak</div>
+      <div class="card-body">
+        <div id="compositionChart"></div>
+        {% if summary.margin < 0 %}<p class="small text-danger mt-3 mb-0">Total biaya melebihi nilai kontrak sebesar {{ (-summary.margin)|rp }}.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Daftar proyek</div>
+  {% if rows %}
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr>
+        <th>Proyek</th><th>Lokasi</th><th>Periode</th><th>Status</th>
+        <th class="text-end">Kontrak</th><th class="text-end">Est. biaya</th><th class="text-end">Est. margin</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for p in rows %}
+        {% set margin = p.contract_value - p.est_cost %}
+        <tr>
+          <td class="project-cell">
+            <a class="project-link" href="{{ url_for('project_detail', item_id=p.id) }}">{{ p.name }}</a>
+            <div class="small text-secondary">{{ p.client }}</div>
+          </td>
+          <td>{{ p.location or "-" }}</td>
+          <td class="text-nowrap small">{{ p.start_date or "-" }}<br><span class="text-secondary">s.d. {{ p.end_date or "-" }}</span></td>
+          <td class="text-nowrap">
+            {% if p.status in ("Belum Mulai", "Berjalan") %}
+            <form method="post" action="{{ url_for('project_start', item_id=p.id) }}" class="m-0">
+              <label class="arc-check">
+                <input type="checkbox" name="started" value="1" {% if p.status == "Berjalan" %}checked{% endif %}
+                       onchange="this.form.requestSubmit()" aria-label="Proyek {{ p.name }} sudah mulai">
+                <span>{{ "Berjalan" if p.status == "Berjalan" else "Belum mulai" }}</span>
+              </label>
+            </form>
+            {% else %}{{ p.status|capitalize }}{% endif %}
+          </td>
+          <td class="text-end text-nowrap">{{ p.contract_value|rp }}</td>
+          <td class="text-end text-nowrap">{{ p.est_cost|rp }}</td>
+          <td class="text-end text-nowrap {{ 'text-danger' if margin < 0 else 'text-success' }}">
+            {{ margin|rp }}{% if p.contract_value %}<div class="small">{{ "%.1f"|format(margin / p.contract_value * 100)|replace(".", ",") }}%</div>{% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="arc-icon-btn align-middle" href="{{ url_for('project_detail', item_id=p.id) }}" aria-label="Lihat perhitungan {{ p.name }}" title="Lihat perhitungan"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+            <form method="post" action="{{ url_for('project_delete', item_id=p.id) }}" class="d-inline-block align-middle">
+              <span class="arc-cm" data-prompt="Hapus proyek {{ p.name }}?"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus proyek {{ p.name }}" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body"><div class="empty">Belum ada data proyek.<br>
+    <button type="button" class="btn btn-link p-0 align-baseline" data-disclosure="add-project" aria-controls="add-project" aria-expanded="false">Tambah proyek</button></div></div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if rows %}
+<script>
+  const rp = (v) => "Rp " + Math.round(v).toLocaleString("id-ID");
+  const rpShort = (v) => "Rp " + new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 2 }).format(v);
+  const pct = (v) => v.toLocaleString("id-ID", { maximumFractionDigits: 1 }) + "%";
+  // Urut dari proyek terlama ke terbaru (kiri ke kanan)
+  const projects = {{ rows_json|tojson }};
+
+  Arc.bar(document.getElementById("contractChart"), {
+    label: "Nilai kontrak per proyek", labels: projects.map((p) => p.name), values: projects.map((p) => p.contract_value),
+    kind: "Rata-rata nilai kontrak", format: rp, tickFormat: rpShort, restWhen: "Geser batang untuk biaya dan margin",
+    detail: (i) => {
+      const p = projects[i], m = p.contract_value - p.est_cost;
+      return `Biaya ${rp(p.est_cost)} · margin ${rp(m)}${p.contract_value ? ` (${pct(m / p.contract_value * 100)})` : ""}`;
+    },
+  });
+
+  // Nilai kontrak = biaya + margin. Bila biaya melebihi kontrak, margin tidak digambar (ada catatan di bawah chart).
+  const total = {{ summary|tojson }};
+  Arc.donut(document.getElementById("compositionChart"), {
+    label: "Komposisi total nilai kontrak", totalLabel: "Nilai kontrak", format: rpShort, groupBelow: 0,
+    items: [
+      { key: "cost", label: "Estimasi biaya", value: Math.min(total.cost, total.contract), color: "var(--cat-1)" },
+      { key: "margin", label: "Estimasi margin", value: Math.max(total.margin, 0), color: "var(--success)" },
+    ],
+  });
+</script>
+{% endif %}
+{% endblock %}

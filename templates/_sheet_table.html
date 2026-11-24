@@ -1,0 +1,193 @@
+{# Tabel sheet bergaya Excel + bar edit sel. Variabel:
+   sheet = {title, rows, widths, images, is_list}, cell_url = POST edit sel,
+   rows_url = POST tambah/hapus baris (None = tidak bisa), reset_label = teks tombol kembalikan nilai (None = sembunyi). #}
+<style>
+  /* Tabel sheet: gaya ikut Excel (border hanya di tempat yang ada di Excel, header berwarna, lebar kolom) */
+  .xl-table { --xl-line: var(--border-strong); table-layout: fixed; border-collapse: collapse;
+              font-size: 13px; font-variant-numeric: tabular-nums; margin: 0; }
+  .xl-table > tbody > tr > td { padding: 5px 10px; border: 0; background: transparent; box-shadow: none;
+                                       white-space: normal; overflow-wrap: anywhere; scroll-margin-top: calc(var(--header-height) + 96px); }
+  .xl-table td.xl-num, .xl-table td.xl-spill { white-space: nowrap; overflow-wrap: normal; }  /* teks meluber seperti Excel */
+  /* Nomor baris seperti Excel: menempel di kiri saat tabel digeser */
+  .xl-table > tbody > tr > th.xl-rownum { position: sticky; left: 0; z-index: 1; width: 44px; padding: 5px 8px;
+    border: 0; border-right: 1px solid var(--border-strong); background: var(--surface-muted);
+    color: var(--text-muted); font-size: 11px; font-weight: 500; text-align: center; }
+  .xl-table tr:has(td.xl-current) > th.xl-rownum { background: color-mix(in oklab, var(--primary) 14%, var(--surface)); color: var(--foreground); }
+  .xl-table > tbody > tr.xl-blank > td { padding-top: 2px; padding-bottom: 2px; }
+  .xl-table td.xl-big { font-size: 16px; font-weight: 500; color: var(--foreground); }
+  .xl-table td.xl-bold { font-weight: 500; color: var(--foreground); }
+  .xl-table td.xb-l1 { border-left: 1px solid var(--xl-line); } .xl-table td.xb-l2 { border-left: 2px solid var(--foreground); }
+  .xl-table td.xb-r1 { border-right: 1px solid var(--xl-line); } .xl-table td.xb-r2 { border-right: 2px solid var(--foreground); }
+  .xl-table td.xb-t1 { border-top: 1px solid var(--xl-line); } .xl-table td.xb-t2 { border-top: 2px solid var(--foreground); }
+  .xl-table td.xb-b1 { border-bottom: 1px solid var(--xl-line); } .xl-table td.xb-b2 { border-bottom: 2px solid var(--foreground); }
+  /* Header berwarna gelap (mis. merah) dengan teks putih tetap solid; warna isi lain dibuat lembut agar mode gelap terbaca */
+  .xl-table td.xl-head { color: #fff; font-weight: 500; }
+  .xl-table td.xl-tint { background: color-mix(in oklab, var(--fill) 20%, var(--surface)); }
+  .xl-table td.xl-theme { background: var(--surface-muted); }
+  @media (hover: hover) and (pointer: fine) {
+    .xl-table tr:hover > td:not(.xl-head):not(.xl-tint) { background: color-mix(in oklab, var(--primary) 5%, transparent); }
+    .xl-table td.xl-edit:hover { box-shadow: inset 0 0 0 1px var(--primary); }
+  }
+  .xl-table td.xl-edit { cursor: pointer; }
+  /* Sudah diedit: ungu (kuning sering dipakai Excel sendiri untuk menandai sel input) */
+  .xl-table td.xl-edited { background: color-mix(in oklab, var(--cat-7) 18%, var(--surface)) !important; box-shadow: inset 3px 0 0 var(--cat-7); }
+  .xl-table td.xl-current { box-shadow: inset 0 0 0 2px var(--primary) !important; }
+  .xl-editbar { position: sticky; top: var(--header-height); z-index: 2; background: var(--surface); }
+  /* Tanda tangan: latar putih gambar disamarkan; di mode gelap tinta dibalik agar tetap terlihat */
+  .xl-sign { display: block; max-width: 100%; max-height: 72px; margin: 0 auto; mix-blend-mode: multiply; }
+  .xl-table > tbody > tr > td:has(> .xl-sign) { vertical-align: middle; }
+  .xl-table td.xl-colon::after { content: ":"; float: right; padding-left: 8px; }  /* label isian kepala PUM */
+  [data-theme="dark"] .xl-sign { filter: invert(1); mix-blend-mode: screen; }
+  .xl-table td.xl-pum { background-image: linear-gradient(135deg, color-mix(in oklab, var(--cat-1) 22%, transparent) 0 8px, transparent 8px); }
+</style>
+
+<div class="card">
+  <div class="card-header">{{ sheet.title }}</div>
+  {# Bar edit: klik sel input -> edit nilai. Sel rumus terkunci (dihitung ulang otomatis).
+     Sheet daftar: baris sel yang dipilih bisa ditambah di bawahnya atau dihapus. #}
+  <div class="xl-editbar d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom" id="xl-editbar">
+    <form class="d-flex" id="xl-goto" role="search" aria-label="Pilih sel">
+      <input class="form-control form-control-sm" id="xl-goto-ref" style="width: 84px" placeholder="B12" title="Ketik alamat sel lalu Enter" aria-label="Alamat sel" autocomplete="off">
+    </form>
+    <span class="small text-body-secondary" id="xl-hint">Klik sel atau ketik alamatnya. Sel rumus terkunci{% if reset_label %}; ungu = sudah diedit{% endif %}.</span>
+    <span class="small fw-medium" id="xl-ref" hidden></span>
+    <form method="post" action="{{ cell_url }}" style="display: contents">
+      <input type="hidden" name="cell" id="xl-cell">
+      <input name="value" id="xl-value" class="form-control form-control-sm" style="max-width: 280px" hidden aria-label="Nilai sel" autocomplete="off">
+      {% if range_cell %}{# sel berisi rentang tanggal (Periode PUM): isi lewat 2 kalender #}
+      <span id="xl-range" data-ref="{{ range_cell.ref }}" hidden><span class="d-inline-flex align-items-center gap-2">
+        <input type="date" name="range_from" id="xl-range-from" class="form-control form-control-sm" value="{{ range_cell.value[0] }}" aria-label="Tanggal mulai periode" disabled>
+        <span class="small text-body-secondary">s/d</span>
+        <input type="date" name="range_to" id="xl-range-to" class="form-control form-control-sm" value="{{ range_cell.value[1] }}" aria-label="Tanggal selesai periode" disabled>
+      </span></span>
+      {% endif %}
+      <button class="btn btn-primary btn-sm" id="xl-save" hidden><i class="bi bi-check-lg"></i> Simpan</button>
+      <button class="btn btn-outline-secondary btn-sm" name="reset" value="1" id="xl-reset" hidden formnovalidate>{{ reset_label or '' }}</button>
+    </form>
+    <span class="small text-body-secondary" id="xl-formula" hidden></span>
+    {% if rows_url %}
+    <div id="xl-row-forms" class="ms-auto" hidden><div class="d-flex align-items-center gap-2">
+    <form method="post" action="{{ rows_url }}">
+      <input type="hidden" name="action" value="insert"><input type="hidden" name="row" data-row>
+      <button class="btn btn-outline-secondary btn-sm" id="xl-insert"><i class="bi bi-plus-lg" aria-hidden="true"></i> Baris di bawah</button>
+    </form>
+    <form method="post" action="{{ rows_url }}" id="xl-delete-form" class="d-flex">
+      <input type="hidden" name="action" value="delete"><input type="hidden" name="row" data-row>
+      <span class="arc-cm" data-confirm="Hapus baris" data-pending="Menghapus" data-prompt="Hapus baris ini?"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+        <button type="button" class="arc-cm-trigger" id="xl-delete" aria-label="Hapus baris" title="Hapus baris"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+      </span></span></span>
+    </form>
+    </div></div>
+    {% endif %}
+  </div>
+  {% if sheet.images %}
+  <div class="px-3 pt-2 small text-body-secondary">Sheet ini berisi {{ sheet.images }} gambar yang tidak ditampilkan. Buka file Excel untuk melihatnya.</div>
+  {% endif %}
+  <div class="table-responsive">
+    {# Lebar kolom sebanding isi (dari server). Di layar lebar, JS membagi sisa ruang ke kolom data secara
+       proporsional supaya tabel memenuhi kartu; kolom nomor baris tetap 44px. #}
+    <table class="table xl-table" style="width: {{ sheet.widths|sum + 44 }}px">
+      <colgroup><col style="width: 44px">{% for w in sheet.widths %}<col data-w="{{ w }}" style="width: {{ w }}px">{% endfor %}</colgroup>
+      <tbody>
+        {% for row in sheet.rows %}
+        <tr{% if row.cells|map(attribute='text')|join('') == '' %} class="xl-blank"{% endif %}>
+          <th class="xl-rownum" scope="row">{{ row.n }}</th>
+          {% for c in row.cells %}
+          <td id="c-{{ c.ref }}" data-ref="{{ c.ref }}"{% if c.formula %} data-formula="{{ c.formula }}"{% else %} data-input="{{ c.input }}"{% endif %}
+            {%- if c.rowspan > 1 %} rowspan="{{ c.rowspan }}"{% endif %}{% if c.colspan > 1 %} colspan="{{ c.colspan }}"{% endif %}
+            {%- if c.fill and c.fill != 'theme' %} style="{% if c.on_fill %}background: {{ c.fill }}{% else %}--fill: {{ c.fill }}{% endif %}"{% endif %}
+            {%- if c.pum %} title="Termasuk PUM {{ c.pum|rp }}; isian sendiri {{ c.input or 0 }}"{% endif %}
+            class="{{ c.borders }}{% if not c.formula %} xl-edit{% endif %}{% if c.edited %} xl-edited{% endif %}{% if c.pum %} xl-pum{% endif %}
+              {%- if c.fill == 'theme' %} xl-theme{% elif c.fill and c.on_fill %} xl-head{% elif c.fill %} xl-tint{% endif %}
+              {%- if c.big %} xl-big{% elif c.bold %} xl-bold{% endif %}
+              {%- if c.align %} text-{{ {'left': 'start', 'center': 'center', 'right': 'end'}[c.align] }}{% endif %}{% if c.num %} xl-num{% elif c.spill %} xl-spill{% endif %}{% if c.colon %} xl-colon{% endif %}">{% if c.img %}<img class="xl-sign" src="{{ c.img }}" alt="Tanda tangan">{% endif %}{{ c.text }}</td>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr><td class="empty">Sheet kosong.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+<script>
+  // Tabel memenuhi lebar kartu: sisa ruang dibagi ke kolom data sebanding lebar dasarnya
+  (() => {
+    const table = document.querySelector(".xl-table");
+    if (!table) return;
+    const wrap = table.parentElement, cols = [...table.querySelectorAll("col[data-w]")];
+    const base = cols.map((c) => +c.dataset.w), total = base.reduce((a, b) => a + b, 0);
+    const fit = () => {
+      const f = Math.max(1, (wrap.clientWidth - 44) / total);
+      cols.forEach((c, i) => (c.style.width = Math.floor(base[i] * f) + "px"));
+      table.style.width = 44 + cols.reduce((a, c) => a + parseInt(c.style.width), 0) + "px";
+    };
+    new ResizeObserver(fit).observe(wrap);
+    fit();
+  })();
+
+  // Edit sel: klik sel input -> isi bar edit; klik sel rumus -> tampilkan rumusnya saja
+  (() => {
+    const bar = document.getElementById("xl-editbar");
+    if (!bar) return;
+    const $ = (id) => document.getElementById(id);
+    let current = null;
+    function pick(td) {
+      if (current) current.classList.remove("xl-current");
+      current = td; td.classList.add("xl-current");
+      const isFormula = td.hasAttribute("data-formula");
+      $("xl-hint").hidden = true;
+      $("xl-goto-ref").value = td.dataset.ref;
+      $("xl-ref").hidden = false; $("xl-ref").textContent = "Sel " + td.dataset.ref;
+      $("xl-cell").value = td.dataset.ref;
+      ["xl-value", "xl-save", "xl-reset"].forEach((id) => ($(id).hidden = isFormula));
+      $("xl-reset").hidden = isFormula || !td.classList.contains("xl-edited") || !$("xl-reset").textContent;
+      $("xl-formula").hidden = !isFormula;
+      $("xl-formula").textContent = isFormula ? "Rumus " + td.dataset.formula + " (dihitung otomatis)" : "";
+      const range = $("xl-range"), isRange = !!range && range.dataset.ref === td.dataset.ref;
+      if (range) {  // sel Periode: 2 kalender menggantikan isian teks (input nonaktif tidak ikut terkirim)
+        range.hidden = !isRange;
+        range.querySelectorAll("input").forEach((i) => { i.disabled = !isRange; i.required = isRange; });
+        $("xl-value").hidden = isFormula || isRange; $("xl-value").disabled = isRange;
+        $("xl-range-to").min = $("xl-range-from").value;
+      }
+      if (isRange) $("xl-range-from").focus();
+      else if (!isFormula) { $("xl-value").value = td.dataset.input; $("xl-value").focus(); $("xl-value").select(); }
+      // Sheet daftar: tombol tambah/hapus untuk baris sel ini
+      const row = td.dataset.ref.replace(/^[A-Z]+/, "");
+      if ($("xl-row-forms")) {
+        document.querySelectorAll("[data-row]").forEach((i) => (i.value = row));
+        $("xl-row-forms").hidden = false;
+        $("xl-insert").lastChild.textContent = ` Baris di bawah ${row}`;
+        $("xl-delete").setAttribute("aria-label", `Hapus baris ${row}`);
+        $("xl-delete").title = `Hapus baris ${row}`;
+        const prompt = $("xl-delete-form").querySelector(".arc-cm-prompt");
+        if (prompt) prompt.textContent = prompt.title = `Hapus baris ${row}?`;
+        $("xl-delete-form").querySelector(".arc-cm").dataset.prompt = `Hapus baris ${row}?`;
+      }
+    }
+    document.querySelectorAll(".xl-table td[data-ref]").forEach((td) => td.addEventListener("click", () => pick(td)));
+    // Pilih sel lewat keyboard: ketik alamat (B12) lalu Enter
+    $("xl-goto").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const td = document.getElementById("c-" + $("xl-goto-ref").value.trim().toUpperCase());
+      if (td) {
+        pick(td);
+        td.scrollIntoView({ block: "center" });
+      } else {
+        $("xl-goto-ref").setCustomValidity("Sel tidak ada di tampilan sheet ini");
+        $("xl-goto-ref").reportValidity();
+      }
+    });
+    $("xl-goto-ref").addEventListener("input", () => $("xl-goto-ref").setCustomValidity(""));
+    if ($("xl-range-from")) $("xl-range-from").addEventListener("change", () => ($("xl-range-to").min = $("xl-range-from").value));
+    // Setelah simpan / tambah / hapus baris, sel itu dipilih lagi (#c-B12). Bila sel tertutup merged cell,
+    // pilih sel pertama di baris yang sama.
+    if (location.hash.startsWith("#c-")) {
+      const ref = location.hash.slice(3), row = ref.replace(/^[A-Z]+/, "");
+      const target = document.getElementById("c-" + ref) ||
+        [...document.querySelectorAll(".xl-table td[data-ref]")].find((td) => td.dataset.ref.replace(/^[A-Z]+/, "") === row);
+      if (target) { pick(target); target.scrollIntoView({ block: "center" }); }
+    }
+  })();
+</script>

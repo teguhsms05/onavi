@@ -1,0 +1,601 @@
+/* ═══════════════════════════════════════════════════════════════
+   Arc (uiarc.dev) untuk Onavi: port HTML/CSS dari komponen gratis Arc (foundation, input, select,
+   number-field, metric-card, donut/line/bar chart) dalam palet Onavi (aksen merah, teks navy).
+   Kelas Bootstrap yang sudah ada diberi gaya Arc, jadi halaman tidak perlu diubah markup-nya.
+   Chart: static/js/arc.js. Aturan Arc: berat huruf 400/500, tanpa huruf kapital semua,
+   kartu bergaris tanpa bayangan, fokus hanya mengubah warna garis.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Peran warna (Arc foundation), dipetakan ke palet Onavi */
+  --background: #f0f2f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f4f5f9;
+  --foreground: #111c43;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border: #e5e8f0;
+  --border-subtle: #eef0f5;
+  --border-strong: #c7cddb;
+  --accent: #c32836;
+  --accent-strong: #a8212d;
+  --accent-subtle: rgba(195, 40, 54, .1);
+  --accent-foreground: #ffffff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+
+  /* Bentuk & ukuran */
+  --radius-control: 14px;
+  --radius-panel: 20px;
+  --radius-surface: 24px;
+  --radius-pill: 9999px;
+  --control-height-sm: 32px;
+  --control-height-md: 40px;
+  --shadow-floating: 0 20px 48px rgba(0, 0, 0, .105), 0 3px 10px rgba(0, 0, 0, .045);
+
+  /* Tipografi */
+  --font-display: "Geist", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --text-xs: .75rem; --text-sm: .8125rem; --text-base: .9375rem; --text-lg: 1.0625rem;
+  --text-xl: 1.25rem; --text-2xl: 1.375rem; --text-3xl: 1.75rem; --text-field: .875rem;
+  --tracking-display: -.03em; --tracking-body: -.01em;
+  --leading-display: 1.1; --leading-body: 1.4;
+
+  /* Gerak */
+  --duration-instant: 100ms; --duration-fast: 150ms; --duration-standard: 240ms; --duration-considered: 480ms;
+  --ease-standard: cubic-bezier(.22, 1, .36, 1);
+  --ease-enter: cubic-bezier(.16, 1, .3, 1);
+
+  --bs-body-font-family: var(--font-body);
+  --bs-body-color: var(--foreground);
+  --bs-border-color: var(--border);
+  --bs-secondary-color: var(--text-muted);
+}
+
+body { letter-spacing: var(--tracking-body); }
+
+/* Fokus: hanya untuk keyboard (Arc tidak memakai cincin pada fokus pointer) */
+:focus:not(:focus-visible) { outline: none; }
+.btn:focus-visible, .form-control:focus-visible, .form-select:focus-visible, .arc-row:focus-visible, .arc-toggle:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--foreground) 55%, transparent); outline-offset: 2px;
+}
+
+/* ── Kartu (Arc card: garis 1px, radius surface, tanpa bayangan) ── */
+.card { border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--surface); box-shadow: none; }
+.card-header {
+  padding: 18px 24px 14px; border-bottom: 1px solid var(--border-subtle); background: transparent;
+  color: var(--foreground); font-size: var(--text-base); font-weight: 500;
+}
+.card-header:first-child { border-radius: calc(var(--radius-surface) - 1px) calc(var(--radius-surface) - 1px) 0 0; }
+.table-responsive { border-radius: 0 0 calc(var(--radius-surface) - 1px) calc(var(--radius-surface) - 1px); }
+
+/* ── Metric card (Arc metric-card): label, angka besar, keterangan; tanpa ikon dalam kotak ── */
+.stat-label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 400; line-height: var(--leading-body); }
+.stat-value {
+  margin-top: 10px; color: var(--foreground); font-family: var(--font-display); font-size: var(--text-3xl); font-weight: 500;
+  letter-spacing: var(--tracking-display); line-height: var(--leading-display); font-variant-numeric: tabular-nums;
+}
+.stat-sub { margin-top: 8px; color: var(--text-muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.stat-value-sm { font-size: var(--text-2xl); }
+
+/* ── Label & bantuan ── */
+.form-label { margin-bottom: 8px; color: var(--foreground); font-size: var(--text-sm); font-weight: 500; }
+.form-text { margin-top: 6px; color: var(--text-muted); font-size: var(--text-xs); line-height: var(--leading-body); }
+
+/* ── Input (Arc input): garis kuat, fokus hanya menggelapkan garis ── */
+.form-control, .form-select {
+  min-height: var(--control-height-md); padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-control);
+  background-color: var(--surface); color: var(--foreground); font-size: var(--text-field); line-height: var(--leading-body);
+  box-shadow: none;
+  transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
+}
+.form-control[type="file"] { padding: 0; line-height: calc(var(--control-height-md) - 2px); }
+.form-control::file-selector-button { height: 100%; border: 0; border-inline-end: 1px solid var(--border); background: var(--surface-muted); color: var(--foreground); }
+.form-control::placeholder { color: var(--text-muted); }
+.form-control:focus, .form-select:focus { border-color: var(--foreground); box-shadow: none; }
+.form-control:disabled { background: var(--surface-muted); opacity: .5; }
+
+/* ── Select (Arc select trigger): garis lembut, hover mengisi latar ── */
+.form-select { padding-right: 36px; border-color: var(--border); cursor: pointer; background-position: right 12px center; }
+@media (hover: hover) and (pointer: fine) {
+  .form-control:hover:not(:focus):not(:disabled) { border-color: var(--foreground); }
+  .form-select:hover:not(:focus) { border-color: var(--border-strong); background-color: var(--surface-muted); }
+}
+
+/* ── Input dengan satuan (Arc number-field shell): satu garis, satuan di dalam field ── */
+.input-group {
+  flex-wrap: nowrap; align-items: center; min-height: var(--control-height-md); padding: 3px; gap: 2px;
+  border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+.input-group > .form-control, .input-group > .form-select {
+  min-height: calc(var(--control-height-md) - 8px); border: 0; border-radius: calc(var(--radius-control) - 3px) !important;
+  background-color: transparent; font-variant-numeric: tabular-nums;
+}
+.input-group > .form-control { padding: 0 8px; min-width: 0; }
+.input-group > .form-select { flex: 0 0 auto; padding-left: 10px; color: var(--text-secondary); }
+.input-group-text { padding: 0 8px; border: 0; background: transparent; color: var(--text-muted); font-size: var(--text-sm); }
+@media (hover: hover) and (pointer: fine) { .input-group:hover { border-color: var(--border-strong); } .input-group > .form-control:hover { border: 0; } }
+.input-group:focus-within { border-color: var(--foreground); }
+.input-group > .form-control:focus, .input-group > .form-select:focus { box-shadow: none; }
+
+/* Tombol −/+ (Arc number-field step), disisipkan oleh arc.js pada input angka bulat */
+.arc-step {
+  display: grid; flex: none; width: calc(var(--control-height-md) - 10px); height: calc(var(--control-height-md) - 10px);
+  place-items: center; padding: 0; border: 0; border-radius: calc(var(--radius-control) - 3px);
+  background: transparent; color: var(--text-secondary); font-size: 15px; line-height: 1; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), transform var(--duration-instant) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) { .arc-step:hover:not(:disabled) { background: var(--surface-muted); color: var(--foreground); } }
+.arc-step:active:not(:disabled) { transform: scale(.94); background: var(--surface-muted); }
+.arc-step:disabled { opacity: .35; cursor: default; }
+/* Panah bawaan browser diganti tombol −/+ */
+.arc-nf input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.arc-nf input[type="number"]::-webkit-inner-spin-button, .arc-nf input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ── Tombol ── */
+.btn { min-height: var(--control-height-md); padding: 0 16px; border-radius: var(--radius-control); font-size: var(--text-sm); font-weight: 500; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), transform var(--duration-instant) var(--ease-standard); }
+.btn:active { transform: scale(.97); }
+.btn-sm { min-height: var(--control-height-sm); padding: 0 10px; border-radius: calc(var(--radius-control) - 4px); }
+.btn-outline-secondary { --bs-btn-color: var(--foreground); --bs-btn-border-color: var(--border); --bs-btn-hover-bg: var(--surface-muted); --bs-btn-hover-color: var(--foreground); --bs-btn-hover-border-color: var(--border-strong); --bs-btn-active-bg: var(--surface-muted); --bs-btn-active-color: var(--foreground); --bs-btn-active-border-color: var(--border-strong); --bs-btn-disabled-color: var(--text-muted); --bs-btn-disabled-border-color: var(--border); }
+.btn-outline-danger { --bs-btn-color: var(--danger); --bs-btn-border-color: var(--border); --bs-btn-hover-bg: color-mix(in oklab, var(--danger) 9%, var(--surface)); --bs-btn-hover-color: var(--danger); --bs-btn-hover-border-color: color-mix(in oklab, var(--danger) 40%, var(--border)); --bs-btn-active-bg: color-mix(in oklab, var(--danger) 14%, var(--surface)); --bs-btn-active-color: var(--danger); --bs-btn-active-border-color: color-mix(in oklab, var(--danger) 40%, var(--border)); }
+.btn > .bi { margin-right: 4px; }
+.btn-sm > .bi:only-child { margin-right: 0; }
+
+/* ── Tabel (Arc data table: kepala tenang, garis tipis) ── */
+.table { --bs-table-bg: transparent; margin-bottom: 0; font-variant-numeric: tabular-nums; }
+.table > thead th { padding: 12px 16px; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
+.table > tbody td { padding: 12px 16px; border-color: var(--border-subtle); }
+.table > tbody tr:last-child td { border-bottom: 0; }
+
+/* ── Peringatan & kosong ── */
+.alert { border-radius: var(--radius-control); font-size: var(--text-sm); }
+.empty { color: var(--text-muted); text-align: center; padding: 2rem 1rem; }
+
+/* ═══ Chart (static/js/arc.js) ═══ */
+.arc-chart { min-width: 0; color: var(--foreground); font-family: var(--font-body); letter-spacing: var(--tracking-body); }
+.arc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Donut (Arc donut-chart): cincin di samping legend bila lebar cukup, di atasnya pada layar sempit */
+.arc-donut { container-type: inline-size; display: grid; gap: 24px; }
+@container (min-width: 460px) { .arc-donut-inner { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 32px; } }
+.arc-donut-inner { display: grid; gap: 24px; min-width: 0; }
+.arc-ring { position: relative; width: 208px; max-width: 100%; aspect-ratio: 1; justify-self: center; -webkit-tap-highlight-color: transparent; }
+.arc-ring svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.arc-ring svg[data-hovering] { cursor: pointer; }
+.arc-seg { fill: var(--slice); transition: opacity var(--duration-standard) var(--ease-standard); }
+.arc-seg[data-dim] { opacity: .45; }
+.arc-track { fill: none; stroke: var(--surface-muted); }
+.arc-center { position: absolute; top: 50%; left: 50%; display: grid; width: 132px; justify-items: center; gap: 2px; text-align: center; transform: translate(-50%, -50%); pointer-events: none; }
+.arc-center-label, .arc-center-meta { display: block; width: 100%; overflow: hidden; font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.arc-center-label { color: var(--text-secondary); }
+.arc-center-meta { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.arc-center-value { max-width: 100%; overflow: hidden; font-family: var(--font-display); font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-display); line-height: var(--leading-display); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.arc-legend { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.arc-row {
+  display: grid; width: 100%; min-height: 40px; grid-template-columns: 10px minmax(0, 1fr) auto 3.4em; align-items: center; column-gap: 10px;
+  padding: 6px 10px; border: 0; border-radius: 12px; background: transparent; color: var(--foreground); cursor: pointer;
+  font: inherit; font-size: var(--text-sm); text-align: left; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-standard), transform var(--duration-instant) var(--ease-standard);
+}
+.arc-row:active { transform: scale(.985); }
+.arc-row[data-active] { background: color-mix(in oklab, var(--foreground) 5%, transparent); }
+@media (hover: hover) and (pointer: fine) { .arc-row:hover { background: color-mix(in oklab, var(--foreground) 5%, transparent); } }
+.arc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--slice); box-shadow: inset 0 0 0 1.5px var(--slice); }
+.arc-row[data-hidden] .arc-dot { background: transparent; }
+.arc-row[data-hidden] .arc-row-label, .arc-row[data-hidden] .arc-row-value, .arc-row[data-hidden] .arc-row-share { color: var(--text-muted); }
+.arc-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-row-value { justify-self: end; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arc-row-share { justify-self: end; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Line (Arc line-chart): toggle seri, plot, sumbu nilai kanan, sumbu waktu bawah, crosshair + tooltip */
+.arc-line { display: grid; gap: 16px; }
+.arc-toggles { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-inline: -8px; }
+.arc-toggle {
+  display: inline-flex; min-height: 32px; align-items: center; gap: 8px; padding: 0 10px 0 8px; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: var(--text-sm);
+  transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), transform var(--duration-instant) var(--ease-standard);
+}
+.arc-toggle:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .arc-toggle:hover { background: color-mix(in oklab, var(--foreground) 5%, transparent); color: var(--foreground); } }
+.arc-toggle[aria-pressed="false"] { color: var(--text-muted); }
+.arc-toggle[aria-pressed="false"] .arc-toggle-label { opacity: .72; text-decoration: line-through; text-decoration-color: color-mix(in oklab, currentColor 55%, transparent); }
+.arc-swatch { position: relative; width: 14px; height: 10px; flex: none; }
+.arc-swatch::before { position: absolute; top: 50%; left: 0; width: 100%; height: 2.5px; border-radius: 2px; background: var(--series); content: ""; transform: translateY(-50%); transform-origin: left; transition: transform var(--duration-standard) var(--ease-standard), opacity var(--duration-fast) var(--ease-standard); }
+.arc-swatch[data-dashed]::before { background: repeating-linear-gradient(to right, var(--series) 0 4px, transparent 4px 7px); }
+.arc-toggle[aria-pressed="false"] .arc-swatch::before { opacity: .45; transform: translateY(-50%) scaleX(.35); }
+
+.arc-plotwrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 56px; grid-template-rows: auto 26px; min-width: 0; }
+.arc-plot { position: relative; grid-area: 1 / 1; min-width: 0; outline: none; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.arc-plot svg { display: block; overflow: visible; }
+.arc-grid { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+.arc-baseline { stroke: var(--border-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.arc-cross { stroke: var(--border-strong); stroke-width: 1; shape-rendering: crispEdges; opacity: 0; transition: opacity var(--duration-instant) var(--ease-standard); }
+.arc-path { fill: none; stroke: var(--series); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: d var(--duration-considered) var(--ease-standard), opacity var(--duration-standard) var(--ease-standard); }
+.arc-path[data-dashed] { stroke-dasharray: 4 5; stroke-width: 1.75; }
+.arc-area { fill: color-mix(in oklab, var(--series) 9%, transparent); stroke: none; transition: d var(--duration-considered) var(--ease-standard), opacity var(--duration-standard) var(--ease-standard); }
+.arc-path[data-hidden], .arc-area[data-hidden] { opacity: 0; }
+.arc-bars rect { fill: var(--series); }
+.arc-bars[data-hidden] { opacity: 0; }
+.arc-pt { fill: var(--series); stroke: var(--surface); stroke-width: 2; opacity: 0; transition: opacity var(--duration-instant) var(--ease-standard); }
+.arc-plotwrap[data-scrubbing] .arc-cross, .arc-plotwrap[data-scrubbing] .arc-pt:not([data-hidden]) { opacity: 1; }
+.arc-tip {
+  position: absolute; top: 0; left: 0; z-index: 2; display: grid; min-width: 150px; max-width: min(240px, 100%); gap: 4px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: var(--shadow-floating);
+  opacity: 0; pointer-events: none; scale: .96; transition: opacity var(--duration-fast) var(--ease-standard), scale var(--duration-fast) var(--ease-standard);
+}
+.arc-plotwrap[data-scrubbing] .arc-tip { opacity: 1; scale: 1; }
+.arc-tip-title { margin: 0 0 2px; color: var(--text-secondary); font-size: var(--text-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.arc-tip-row { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-sm); }
+.arc-tip-swatch { width: 10px; height: 2.5px; flex: none; border-radius: 2px; background: var(--series); }
+.arc-tip-swatch[data-dashed] { background: repeating-linear-gradient(to right, var(--series) 0 3px, transparent 3px 5px); }
+.arc-tip-name { flex: 1; min-width: 0; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.arc-tip-value { flex: none; margin-left: 8px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arc-gutter { position: relative; grid-area: 1 / 2; min-width: 0; }
+.arc-tick { position: absolute; left: 10px; height: 0; white-space: nowrap; pointer-events: none; }
+.arc-tick > span { display: block; transform: translateY(-50%); color: var(--text-muted); font-size: var(--text-xs); line-height: 1; font-variant-numeric: tabular-nums; }
+.arc-tick[data-mean] > span { color: var(--foreground); font-weight: 500; }
+.arc-axis { position: relative; grid-area: 2 / 1; min-width: 0; overflow: hidden; }
+.arc-axis-label { position: absolute; top: 8px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Bar (Arc bar-chart): angka utama di atas = rata-rata saat diam, batang yang disorot saat digeser */
+.arc-bar { display: grid; gap: 20px; }
+.arc-head { display: grid; gap: 2px; min-width: 0; }
+.arc-kind, .arc-when { display: block; min-height: calc(1em * var(--leading-body)); overflow: hidden; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.arc-kind { color: var(--text-secondary); }
+.arc-when { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.arc-value { overflow: hidden; font-family: var(--font-display); font-size: var(--text-3xl); font-weight: 500; letter-spacing: var(--tracking-display); line-height: var(--leading-display); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.arc-b { fill: color-mix(in oklab, var(--accent) 62%, var(--surface)); transition: fill var(--duration-fast) var(--ease-standard); }
+.arc-plotwrap[data-scrubbing] .arc-b { fill: color-mix(in oklab, var(--accent) 24%, var(--surface)); }
+.arc-plotwrap .arc-b[data-active] { fill: var(--accent); }
+.arc-mean { stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 3 3; shape-rendering: crispEdges; }
+.arc-scrub { position: absolute; inset: 0; outline: none; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-seg, .arc-row, .arc-toggle, .arc-swatch::before, .arc-path, .arc-area, .arc-pt, .arc-cross, .arc-tip, .arc-b, .arc-step, .btn { transition: none; }
+}
+
+/* ═══ Progress (Arc progress): label di atas, jalur tipis berbingkai, isi warna aksen ═══ */
+.arc-progress { width: 100%; color: var(--text-secondary); font-size: var(--text-sm); }
+.arc-progress-meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; line-height: var(--leading-body); }
+.arc-progress-hint { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.arc-progress-track { height: 7px; overflow: hidden; border: 1px solid var(--border); border-radius: 99px; background: var(--surface-muted); }
+.arc-progress-fill { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--accent); transform: translateX(-100%); transition: transform .4s var(--ease-standard); }
+
+/* ═══ Confirm morph (Arc confirm-morph): tombol hapus berubah jadi konfirmasi di tempat ═══ */
+.arc-cm { position: relative; display: inline-flex; max-width: 100%; vertical-align: middle; font-size: var(--text-sm); line-height: 20px; -webkit-tap-highlight-color: transparent; }
+.arc-cm-surface {
+  position: relative; display: flex; height: var(--control-height-sm); max-width: 100%; overflow: clip; border-radius: var(--radius-pill);
+  background: var(--surface-raised); transition: width var(--duration-standard) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+}
+.arc-cm-surface::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--border); border-radius: inherit; pointer-events: none; }
+.arc-cm-face { display: flex; flex: none; height: 100%; align-items: center; gap: 2px; padding: 0 4px; white-space: nowrap; }
+.arc-cm-face[data-face="idle"] { padding: 0; }
+.arc-cm-trigger {
+  display: inline-grid; width: var(--control-height-sm); height: 100%; place-items: center; padding: 0; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-secondary); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.arc-cm-prompt { max-width: 16rem; overflow: hidden; padding: 0 8px 0 12px; color: var(--foreground); font-weight: 500; text-overflow: ellipsis; }
+.arc-cm-no, .arc-cm-yes {
+  display: inline-flex; flex: none; height: calc(var(--control-height-sm) - 8px); align-items: center; padding: 0 12px; border: 0; border-radius: var(--radius-pill);
+  cursor: pointer; font: inherit; font-weight: 500; touch-action: manipulation;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+}
+.arc-cm-no { background: transparent; color: var(--text-secondary); }
+/* Satu-satunya warna di kontrol ini: merah untuk jawaban yang menghapus */
+.arc-cm-yes { background: color-mix(in oklab, var(--danger) 13%, transparent); color: var(--danger); }
+.arc-cm-status { display: inline-flex; align-items: center; gap: 8px; padding: 0 16px 0 12px; color: var(--text-secondary); font-weight: 500; }
+.arc-cm-spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--danger); border-radius: 50%; animation: arc-spin .7s linear infinite; }
+@keyframes arc-spin { to { transform: rotate(360deg); } }
+@media (hover: hover) and (pointer: fine) {
+  .arc-cm-trigger:hover { background: color-mix(in oklab, var(--danger) 9%, transparent); color: var(--danger); }
+  .arc-cm-no:hover { background: color-mix(in oklab, var(--foreground) 7%, transparent); color: var(--foreground); }
+  .arc-cm-yes:hover { background: color-mix(in oklab, var(--danger) 18%, transparent); }
+}
+.arc-cm-trigger:focus-visible { outline: none; background: color-mix(in oklab, var(--danger) 9%, transparent); color: var(--danger); }
+.arc-cm-no:focus-visible { outline: none; background: color-mix(in oklab, var(--foreground) 8%, transparent); color: var(--foreground); }
+.arc-cm-yes:focus-visible { outline: none; background: color-mix(in oklab, var(--danger) 20%, transparent); }
+.arc-cm-no:active, .arc-cm-yes:active { transform: scale(.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-progress-fill, .arc-cm-surface, .arc-cm-no, .arc-cm-yes { transition: none; }
+  .arc-cm-spinner { animation-duration: 1.6s; }
+}
+
+/* Angka kartu tidak boleh keluar dari kartu sempit */
+.stat-value { overflow-wrap: anywhere; }
+.arc-cm-face[hidden] { display: none; }
+
+/* ═══ File dropzone (Arc file-dropzone): target besar bergaris putus-putus, baris file di bawahnya ═══ */
+.arc-fdz { position: relative; display: grid; min-width: 0; color: var(--foreground); }
+.arc-fdz-zone { position: relative; display: grid; min-width: 0; border-radius: var(--radius-surface); background: var(--surface); transition: background-color var(--duration-standard) var(--ease-standard); }
+.arc-fdz-edge { position: absolute; top: .5px; left: .5px; width: calc(100% - 1px); height: calc(100% - 1px); overflow: visible; pointer-events: none; }
+.arc-fdz-edge rect { fill: none; stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 3.5 3.5; transition: stroke var(--duration-fast) var(--ease-standard), stroke-dasharray var(--duration-standard) var(--ease-standard); }
+.arc-fdz-trigger { display: flex; width: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 26px 20px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; text-align: center; cursor: pointer; }
+.arc-fdz-trigger > * { pointer-events: none; }
+@media (hover: hover) and (pointer: fine) {
+  .arc-fdz-zone:has(.arc-fdz-trigger:hover) { background: var(--surface-muted); }
+  .arc-fdz-zone:has(.arc-fdz-trigger:hover) .arc-fdz-edge rect { stroke: var(--text-muted); }
+  .arc-fdz-zone:has(.arc-fdz-trigger:hover) .arc-fdz-sheet[data-sheet="back"] { --r: -15deg; --x: -13px; }
+  .arc-fdz-zone:has(.arc-fdz-trigger:hover) .arc-fdz-sheet[data-sheet="side"] { --r: 15deg; --x: 13px; }
+  .arc-fdz-zone:has(.arc-fdz-trigger:hover) .arc-fdz-sheet[data-sheet="front"] { --y: -2px; }
+}
+.arc-fdz-zone:has(.arc-fdz-trigger:active) { background: var(--surface-muted); }
+.arc-fdz-trigger:focus-visible { outline: none; }
+.arc-fdz-zone:has(.arc-fdz-trigger:focus-visible) .arc-fdz-edge rect { stroke: var(--foreground); }
+/* File di atas target: garis putus-putus menyatu, lembar kertas terangkat */
+.arc-fdz-zone[data-dragging] { background: color-mix(in oklab, var(--accent) 2.5%, var(--surface)); }
+.arc-fdz-zone[data-dragging] .arc-fdz-edge rect { stroke: color-mix(in oklab, var(--accent) 40%, var(--border)); stroke-dasharray: 7 0; }
+.arc-fdz-sheets { position: relative; display: block; width: 36px; height: 44px; margin: 8px 0 14px; }
+.arc-fdz-sheet {
+  --r: 0deg; --x: 0px; --y: 0px;
+  position: absolute; inset: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 3px 8px rgba(0, 0, 0, .04);
+  transform: translate(var(--x), var(--y)) rotate(var(--r)); transform-origin: 50% 100%;
+  transition: transform var(--duration-standard) var(--ease-standard), border-color var(--duration-standard) var(--ease-standard);
+}
+.arc-fdz-sheet::before, .arc-fdz-sheet::after { position: absolute; top: 8px; left: 7px; width: 16px; height: 2px; border-radius: 2px; background: var(--text-muted); content: ""; opacity: .3; }
+.arc-fdz-sheet::after { top: 13px; width: 11px; }
+.arc-fdz-sheet[data-sheet="back"] { --r: -10deg; --x: -9px; --y: 2px; }
+.arc-fdz-sheet[data-sheet="side"] { --r: 10deg; --x: 9px; --y: 2px; }
+.arc-fdz-zone[data-dragging] .arc-fdz-sheet { border-color: var(--border-strong); }
+.arc-fdz-zone[data-dragging] .arc-fdz-sheet[data-sheet="back"] { --r: -22deg; --x: -20px; --y: -2px; }
+.arc-fdz-zone[data-dragging] .arc-fdz-sheet[data-sheet="side"] { --r: 22deg; --x: 20px; --y: -2px; }
+.arc-fdz-zone[data-dragging] .arc-fdz-sheet[data-sheet="front"] { --y: -8px; }
+.arc-fdz-label { font-size: var(--text-sm); font-weight: 500; }
+.arc-fdz-desc { margin-top: 2px; color: var(--text-secondary); font-size: var(--text-sm); }
+.arc-fdz-note { padding-top: 6px; color: var(--text-muted); font-size: var(--text-xs); }
+.arc-fdz-error { display: flex; gap: 6px; padding-top: 12px; color: var(--danger); font-size: var(--text-sm); }
+.arc-fdz-error[hidden], .arc-fdz-row[hidden] { display: none; }
+.arc-fdz-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 58px; margin-top: 8px; padding: 8px 8px 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }
+.arc-fdz-icon { display: grid; width: 40px; height: 40px; place-items: center; color: var(--text-secondary); font-size: 22px; }
+.arc-fdz-name { overflow: hidden; font-size: var(--text-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.arc-fdz-meta { margin-top: 1px; color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arc-fdz-remove { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+@media (hover: hover) and (pointer: fine) { .arc-fdz-remove:hover { background: color-mix(in oklab, var(--foreground) 7%, transparent); color: var(--foreground); } }
+.arc-fdz-remove:focus-visible { outline: none; background: color-mix(in oklab, var(--foreground) 8%, transparent); color: var(--foreground); }
+@media (prefers-reduced-motion: reduce) { .arc-fdz-zone, .arc-fdz-edge rect, .arc-fdz-sheet, .arc-fdz-remove { transition: none; } }
+/* Di sel tabel, pil konfirmasi melayang di atas baris dan melebar ke kiri dari tombol, jadi tabel tidak bergeser */
+.arc-cm { width: var(--control-height-sm); height: var(--control-height-sm); }
+.arc-cm-surface { position: absolute; top: 0; right: 0; z-index: 3; max-width: none; }
+.arc-cm[data-open] .arc-cm-surface { box-shadow: var(--shadow-floating); }
+
+/* 6. Kode (nama tabel) dalam palet Onavi, bukan pink bawaan Bootstrap */
+code { padding: 1px 6px; border-radius: 6px; background: var(--surface-muted); color: var(--foreground); font-size: .8125em; }
+
+/* 8. Anggota "Lainnya" pada legend donut */
+.arc-row-text { display: grid; min-width: 0; }
+.arc-row-members { color: var(--text-muted); font-size: var(--text-xs); line-height: var(--leading-body); }
+.arc-row[data-hidden] .arc-row-members { color: var(--text-muted); }
+
+/* 4. Layar sentuh: target minimal 44 px (Arc responsive) untuk tombol kecil, tombol hapus, dan −/+ */
+@media (pointer: coarse) {
+  :root { --control-height-sm: 44px; --control-height-md: 44px; }
+  .arc-fdz-remove { width: 44px; height: 44px; }
+}
+
+/* ═══ Warna kategori (jenis sensor & seri chart). Terang & gelap lolos validasi palet dataviz terhadap kartu Onavi. ═══ */
+:root {
+  --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a; --cat-4: #eda100; --cat-5: #e87ba4; --cat-6: #008300; --cat-7: #6250d6;
+}
+
+/* ═══ Mode gelap: nilai mengikuti Arc foundation (gelap netral), kontras teks ≥ 4,5:1 terhadap kartu ═══ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0f1115;
+  --surface: #181a1f;
+  --surface-raised: #1f2228;
+  --surface-muted: #22252b;
+  --foreground: #eef0f4;
+  --text-secondary: #b4bac6;
+  --text-muted: #8b93a3;
+  --border: #2c3038;
+  --border-subtle: #23262c;
+  --border-strong: #454b57;
+  --accent: #ef5a64;
+  --accent-strong: #f37780;
+  --accent-subtle: rgba(239, 90, 100, .14);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --shadow-floating: 0 22px 55px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .04);
+  --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500; --cat-5: #d55181; --cat-6: #0ca30c; --cat-7: #9085e9;
+
+  /* Token lama Onavi & sidebar */
+  --bg-body: var(--background);
+  --bg-sidebar: #13151a;
+  --bg-topbar: var(--surface);
+  --bg-card: var(--surface);
+  --text-main: var(--foreground);
+  --primary: #d93b46;
+  --primary-hover: #e5555f;
+  --border-color: var(--border);
+  --bs-body-bg: var(--background);
+  --bs-link-color-rgb: 239, 90, 100;
+  --bs-link-hover-color-rgb: 243, 119, 128;
+}
+:root[data-theme="dark"] .sidebar { border-inline-end: 1px solid var(--border); }
+:root[data-theme="dark"] .arc-fdz-sheet { box-shadow: none; }
+
+/* Warna status mengikuti token tema (margin proyek, dll.) */
+.text-danger { color: var(--danger) !important; }
+.text-success { color: var(--success) !important; }
+
+/* ═══ Pilihan tema (Arc segmented-control): Terang · Gelap · Sistem ═══ */
+.theme-seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-muted); }
+.theme-seg button {
+  display: grid; width: 30px; height: 26px; place-items: center; padding: 0; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) { .theme-seg button:hover:not([aria-pressed="true"]) { color: var(--foreground); } }
+.theme-seg button[aria-pressed="true"] { background: var(--surface-raised); color: var(--foreground); box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, .08); }
+.theme-seg button:focus-visible { outline: 2px solid color-mix(in oklab, var(--foreground) 55%, transparent); outline-offset: 1px; }
+@media (pointer: coarse) { .theme-seg button { width: 44px; height: 38px; } }
+@media (prefers-reduced-motion: reduce) { .theme-seg button { transition: none; } }
+/* Batang bar chart di mode gelap: campuran lebih terang agar warnanya jelas, bukan keruh (sama seperti Arc) */
+:root[data-theme="dark"] .arc-b { fill: color-mix(in oklab, var(--accent) 76%, var(--surface)); }
+:root[data-theme="dark"] .arc-plotwrap[data-scrubbing] .arc-b { fill: color-mix(in oklab, var(--accent) 34%, var(--surface)); }
+:root[data-theme="dark"] .arc-plotwrap .arc-b[data-active] { fill: var(--accent); }
+
+/* Badge info (Arc badge tone="info"): menandai hitungan yang sedang ditampilkan */
+.arc-badge { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--accent-subtle); color: var(--accent); font-size: var(--text-xs); font-weight: 500; white-space: nowrap; vertical-align: 1px; }
+/* Tombol berupa tautan (<a class="btn">): isi tepat di tengah seperti <button> */
+.btn { display: inline-flex; align-items: center; justify-content: center; }
+
+/* ═══ Halaman proyek ═══ */
+/* Tombol ikon tenang (tutup form, lihat detail): pil 32 px, warna hanya saat hover */
+.arc-icon-btn {
+  display: inline-grid; width: var(--control-height-sm); height: var(--control-height-sm); place-items: center; padding: 0; border: 0;
+  border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); text-decoration: none; cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) { .arc-icon-btn:hover { background: color-mix(in oklab, var(--foreground) 7%, transparent); color: var(--foreground); } }
+.arc-icon-btn:focus-visible { outline: none; background: color-mix(in oklab, var(--foreground) 8%, transparent); color: var(--foreground); }
+.project-cell { min-width: 180px; }
+.project-link { color: var(--foreground); font-weight: 500; text-decoration: none; }
+@media (hover: hover) and (pointer: fine) { .project-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; } }
+.back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--text-sm); text-decoration: none; }
+@media (hover: hover) and (pointer: fine) { .back-link:hover { color: var(--foreground); } }
+
+/* Daftar label: nilai (detail proyek) */
+.detail-list { display: grid; gap: 12px; }
+.detail-list > div { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.detail-list > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.detail-list dt { color: var(--text-secondary); font-size: var(--text-sm); font-weight: 400; }
+.detail-list dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+@media (min-width: 768px) {
+  .detail-list-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px; }
+  .detail-list-cols > div:nth-last-child(2):nth-child(odd) { padding-bottom: 0; border-bottom: 0; }
+}
+
+/* Progress selesai berganti ke warna sukses (Arc progress data-complete) */
+.arc-progress[data-complete] .arc-progress-fill { background: var(--success); }
+/* Panel yang digulir ke atas tidak tertutup header yang menempel */
+.card[id] { scroll-margin-top: calc(var(--header-height) + 16px); }
+/* Field dengan satuan (Rp, hari, unit) bergaris sama dengan field biasa */
+.input-group { border-color: var(--border-strong); }
+@media (hover: hover) and (pointer: fine) { .input-group:hover { border-color: var(--foreground); } }
+
+/* ═══ Donut gaya referensi: cincin terpusat, legend 2 kolom di bawah (label + persen) ═══ */
+.arc-donut-inner { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 28px; }
+@container (min-width: 460px) { .arc-donut-inner { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+.arc-donut .arc-legend { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; row-gap: 2px; }
+@container (max-width: 300px) { .arc-donut .arc-legend { grid-template-columns: minmax(0, 1fr); } }
+.arc-donut .arc-row { grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 10px; padding: 6px 8px; }
+.arc-donut .arc-row-share { color: var(--text-secondary); font-weight: 500; }
+.arc-center { gap: 4px; }
+.arc-center-label { font-size: var(--text-base); }
+.arc-center-value { font-size: var(--text-3xl); }
+
+/* Kartu donut: garis judul putus-putus, isi terpusat saat tinggi kartu disamakan dengan kartu di sebelahnya */
+.card-donut > .card-header { border-bottom-style: dashed; border-bottom-color: var(--border); }
+.card-donut > .card-body { display: flex; flex-direction: column; justify-content: center; padding: 28px 24px; }
+/* Label legend donut boleh turun baris di kartu sempit, bukan terpotong */
+.arc-donut .arc-row-label { overflow: visible; white-space: normal; line-height: var(--leading-body); }
+/* Legend 2 kolom hanya bila muat; kata tidak pernah dipotong di tengah */
+@container (max-width: 359px) { .arc-donut .arc-legend { grid-template-columns: minmax(0, 1fr); } }
+.arc-donut .arc-row-label { overflow-wrap: normal; word-break: normal; hyphens: none; }
+
+/* Checkbox (Arc checkbox): kotak 18 px, centang warna aksen */
+.arc-check { display: inline-flex; align-items: center; gap: 8px; margin: 0; cursor: pointer; font-size: var(--text-sm); }
+.arc-check input {
+  appearance: none; -webkit-appearance: none; display: grid; flex: none; width: 18px; height: 18px; margin: 0; place-items: center;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
+}
+.arc-check input::after { width: 10px; height: 6px; margin-top: -2px; border: 2px solid var(--accent-foreground); border-top: 0; border-right: 0; content: ""; transform: rotate(-45deg) scale(0); transition: transform var(--duration-fast) var(--ease-standard); }
+.arc-check input:checked { border-color: var(--accent); background: var(--accent); }
+.arc-check input:checked::after { transform: rotate(-45deg) scale(1); }
+@media (hover: hover) and (pointer: fine) { .arc-check:hover input:not(:checked) { border-color: var(--foreground); } }
+.arc-check input:focus-visible { outline: 2px solid color-mix(in oklab, var(--foreground) 55%, transparent); outline-offset: 2px; }
+@media (pointer: coarse) { .arc-check { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .arc-check input, .arc-check input::after { transition: none; } }
+
+/* ═══ Command palette (Arc command-palette, susunan awal 2 kolom seperti referensi) ═══ */
+.cmdk-trigger {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--text-muted); font-size: var(--text-sm); cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) { .cmdk-trigger:hover { border-color: var(--border-strong); color: var(--foreground); } }
+.cmdk-trigger:focus-visible { outline: 2px solid color-mix(in oklab, var(--foreground) 55%, transparent); outline-offset: 2px; }
+.cmdk-kbd { display: inline-flex; align-items: center; height: 22px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-muted); font-family: inherit; font-size: var(--text-xs); font-weight: 500; line-height: 1; }
+@media (max-width: 768px) { .cmdk-trigger-text, .cmdk-trigger .cmdk-kbd { display: none; } .cmdk-trigger { width: 34px; padding: 0; justify-content: center; } }
+
+.cmdk-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; background: rgba(9, 11, 18, .48); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: cmdk-fade var(--duration-fast) var(--ease-standard); }
+.cmdk-backdrop[hidden] { display: none; }
+.cmdk { width: min(720px, 100%); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); box-shadow: var(--shadow-floating); animation: cmdk-in var(--duration-standard) var(--ease-enter); }
+.cmdk-search { display: flex; min-height: 60px; align-items: center; gap: 12px; padding: 8px 16px 8px 20px; border-bottom: 1px solid var(--border-subtle); }
+.cmdk-search > .bi { color: var(--text-muted); font-size: 18px; }
+.cmdk-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-base); }
+.cmdk-search input::placeholder { color: var(--text-muted); }
+.cmdk-close { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .cmdk-close:hover { background: var(--surface-muted); color: var(--foreground); } }
+.cmdk-body { overflow: auto; padding: 12px 12px 16px; overscroll-behavior: contain; }
+/* Tampilan awal: kelompok dalam 2 kolom (seperti referensi); saat mencari: satu kolom */
+.cmdk-body[data-mode="browse"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; padding: 20px 24px 24px; }
+@media (max-width: 600px) { .cmdk-body[data-mode="browse"] { grid-template-columns: minmax(0, 1fr); padding: 12px; } }
+.cmdk-group-title { display: block; padding: 8px 10px 4px; color: var(--text-muted); font-size: var(--text-xs); font-weight: 500; }
+.cmdk-item { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 12px; padding: 6px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-sm); text-align: left; text-decoration: none; cursor: pointer; }
+.cmdk-item > .bi { flex: none; width: 18px; color: var(--text-muted); font-size: 16px; text-align: center; transition: color var(--duration-fast) var(--ease-standard); }
+.cmdk-item[aria-selected="true"] { background: var(--surface-muted); }
+.cmdk-item[aria-selected="true"] > .bi { color: var(--foreground); }
+.cmdk-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; gap: 8px; }
+.cmdk-label { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-label mark { padding: 0; background: none; color: inherit; font-weight: 500; }
+.cmdk-desc { min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-body[data-mode="browse"] .cmdk-desc { display: none; }
+.cmdk-empty { padding: 32px 12px; color: var(--text-secondary); font-size: var(--text-sm); text-align: center; }
+.cmdk-foot { display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 20px; border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--text-xs); }
+@media (pointer: coarse) { .cmdk-foot { display: none; } .cmdk-item { min-height: 48px; } }
+@keyframes cmdk-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+@keyframes cmdk-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cmdk, .cmdk-backdrop { animation: none; } }
+
+/* ═══ Tombol tema gaya Arc button-group: satu highlight meluncur di bawah tombol, garis pemisah tipis ═══ */
+.theme-seg { position: relative; isolation: isolate; }
+.theme-thumb {
+  position: absolute; z-index: 0; top: 3px; left: 0; height: calc(100% - 6px); border-radius: var(--radius-pill);
+  background: var(--surface-raised); box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, .08); pointer-events: none;
+  transition: transform 340ms var(--ease-standard), width 340ms var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
+}
+.theme-seg[data-hovering] .theme-thumb { background: color-mix(in oklab, var(--surface-raised) 70%, var(--surface-muted)); }
+.theme-seg[data-instant] .theme-thumb { transition: none; }
+.theme-seg button { position: relative; z-index: 1; }
+.theme-seg button[aria-pressed="true"] { background: transparent; box-shadow: none; color: var(--foreground); }
+.theme-seg button > .bi { transition: transform var(--duration-fast) var(--ease-standard); }
+.theme-seg button:active > .bi { transform: scale(.9); }
+/* Garis pemisah memudar di sisi tombol tempat highlight berada */
+.theme-seg button + button::before { position: absolute; top: 7px; bottom: 7px; left: -1.5px; width: 1px; background: var(--border); content: ""; transition: opacity var(--duration-fast) var(--ease-standard); }
+.theme-seg button[data-flank]::before { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .theme-thumb, .theme-seg button::before, .theme-seg button > .bi { transition: none; } }
+
+/* ═══ Expanding button group: tombol yang terbuka memperlihatkan label; lebar label beranimasi ═══ */
+.arc-ebg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); }
+.arc-ebg-btn {
+  display: inline-flex; height: 32px; align-items: center; padding: 0 8px; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-sm); font-weight: 500;
+  white-space: nowrap; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+.arc-ebg-btn[hidden] { display: none; }
+.arc-ebg-icon { display: inline-grid; width: 16px; place-items: center; font-size: 15px; transition: transform var(--duration-instant) var(--ease-standard); }
+.arc-ebg-btn:active .arc-ebg-icon { transform: scale(.9); }
+.arc-ebg-label {
+  display: inline-block; max-width: 0; overflow: hidden; opacity: 0; filter: blur(2px);
+  transition: max-width var(--duration-fast) var(--ease-standard), opacity var(--duration-fast) var(--ease-standard), filter var(--duration-fast) var(--ease-standard), margin var(--duration-fast) var(--ease-standard);
+}
+.arc-ebg-btn[data-expanded] { background: var(--surface-muted); color: var(--foreground); }
+.arc-ebg-btn[data-expanded] .arc-ebg-label {
+  max-width: 10em; margin-left: 6px; opacity: 1; filter: none;
+  transition-duration: var(--duration-standard);  /* membuka lebih pelan daripada menutup */
+}
+.arc-ebg-btn[data-tone="danger"][data-expanded] { background: color-mix(in oklab, var(--danger) 12%, var(--surface)); color: var(--danger); }
+.arc-ebg-btn[data-armed] { background: color-mix(in oklab, var(--danger) 18%, var(--surface)); color: var(--danger); }
+.arc-ebg-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+  .arc-ebg-label, .arc-ebg-btn[data-expanded] .arc-ebg-label { filter: none; transition: opacity var(--duration-instant) linear; }
+}

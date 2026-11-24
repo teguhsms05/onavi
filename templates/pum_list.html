@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}PUM{% if p %} · {{ p.name }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+  {% if p %}
+  <a class="back-link" href="{{ url_for('monitoring_project', pid=p.id) }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> {{ p.name }}</a>
+  {% if template %}
+  <form method="post" action="{{ url_for('pum_list', pid=p.id) }}">
+    <button class="btn btn-primary"><i class="bi bi-plus-lg" aria-hidden="true"></i> Buat PUM baru</button>
+  </form>
+  {% endif %}
+  {% else %}
+  {# Semua proyek: filter daftar, dan pilih proyek untuk PUM baru #}
+  <form method="get" class="d-flex align-items-center gap-2">
+    <label class="small text-body-secondary text-nowrap" for="pum-filter">Proyek</label>
+    <select id="pum-filter" name="project" class="form-select" onchange="this.form.submit()">
+      <option value="">Semua proyek</option>
+      {% for pr in projects %}<option value="{{ pr.id }}" {% if pr.id == filter_pid %}selected{% endif %}>{{ pr.name }}</option>{% endfor %}
+    </select>
+  </form>
+  {% if template and projects %}
+  <form method="post" class="d-flex align-items-center gap-2"
+        onsubmit="this.action = this.dataset.base.replace('0', this.elements.pid.value)" data-base="{{ url_for('pum_list', pid=0) }}">
+    <select name="pid" class="form-select" aria-label="Proyek untuk PUM baru" required>
+      {% for pr in projects %}<option value="{{ pr.id }}" {% if pr.id == filter_pid %}selected{% endif %}>{{ pr.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary text-nowrap"><i class="bi bi-plus-lg" aria-hidden="true"></i> Buat PUM baru</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+{% if unmatched %}
+<div class="alert alert-secondary py-2">
+  Sebagian PUM belum masuk ke Actual Cost: bulan tanggal PUM di luar periode sheet Actual Cost atau kategorinya tidak ada.
+  <ul class="mb-0 mt-1">{% for cat, ym, amt in unmatched %}<li>{{ cat }} · {{ ym|bulan }} · {{ amt|rp }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+  <div class="card-header">Daftar PUM</div>
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr><th>No. PUM</th>{% if not p %}<th>Proyek</th>{% endif %}<th>Tanggal</th><th>Periode</th><th class="text-end">Total</th><th>Tanda tangan</th><th></th></tr></thead>
+      <tbody>
+        {% for d in docs %}
+        <tr>
+          <td class="text-nowrap"><a class="text-body-emphasis" href="{{ url_for('pum_doc', pid=d.project_id if not p else p.id, doc_id=d.id) }}">{{ d.no_pum or 'PUM tanpa nomor' }}</a></td>
+          {% if not p %}<td><a class="text-body" href="{{ url_for('pum_list', pid=d.project_id) }}">
+            {%- for w in d.project_name.split(' ') %}<span class="text-nowrap">{{ w }}</span>{% if not loop.last %} {% endif %}{% endfor %}</a></td>{% endif %}
+          <td class="text-nowrap">{{ d.doc_date|tanggal if d.doc_date else '-' }}</td>
+          <td>{{ d.periode or '-' }}</td>
+          <td class="text-end text-nowrap">{{ d.total|rp }}</td>
+          <td>
+            <div class="d-flex gap-2">
+              {% for sg in d.sigs %}
+              <div class="pum-sig" title="{{ sg.label }}: {{ sg.name or 'belum ditandatangani' }}">
+                {% if sg.url %}<img src="{{ sg.url }}" alt="Tanda tangan {{ sg.name }}">{% else %}<span class="pum-sig-empty">belum</span>{% endif %}
+                <span class="pum-sig-label">{{ sg.label.split(' ')[0] }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="arc-icon-btn d-inline-grid align-middle" href="{{ url_for('pum_pdf', pid=d.project_id if not p else p.id, doc_id=d.id) }}"
+              target="_blank" rel="noopener" title="Export PDF" aria-label="Export PDF {{ d.no_pum or 'PUM' }}"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></a>
+            <form method="post" action="{{ url_for('pum_delete', pid=d.project_id if not p else p.id, doc_id=d.id) }}" class="d-inline-block align-middle">
+              <span class="arc-cm" data-prompt="Hapus {{ d.no_pum or 'PUM ini' }}? Angkanya ikut keluar dari Actual Cost."><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus {{ d.no_pum or 'PUM' }}" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 6 if p else 7 }}" class="empty">{% if template %}Belum ada PUM. Tekan Buat PUM baru.{% else %}Format PUM belum diatur.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body border-top small text-body-secondary">
+    Total per kategori setiap PUM otomatis ditambahkan ke Actual Cost proyek pada bulan tanggal PUM.
+    No. PUM dibuat otomatis: urut per proyek per tahun, bulan romawi & tahun dari Tanggal PUM.
+    {% if p %}<a href="{{ url_for('pum_all') }}#pengendali">Atur pengendali UM</a>.{% endif %}
+  </div>
+</div>
+
+{% if not p %}
+<div class="card mb-3" id="pengendali">
+  <div class="card-header">Pengendali UM</div>
+  <div class="card-body pb-2 small text-body-secondary">Satu kolom per pengendali di setiap PUM baru (urut seperti di bawah). PUM yang sudah dibuat tidak berubah.</div>
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <tbody>
+        {% for ctl in controllers %}
+        <tr data-ctl>
+          <td class="text-body-secondary" style="width: 48px">{{ loop.index }}</td>
+          <td>
+            <form id="ctl-save-{{ ctl.id }}" method="post" action="{{ url_for('pum_controller_save', cid=ctl.id) }}">
+              <span class="ctl-name text-body-emphasis">{{ ctl.name }}</span>
+              <input name="name" value="{{ ctl.name }}" class="form-control form-control-sm" maxlength="40" required hidden
+                aria-label="Nama pengendali {{ loop.index }}" data-original="{{ ctl.name }}">
+            </form>
+            <form id="ctl-delete-{{ ctl.id }}" method="post" action="{{ url_for('pum_controller_delete', cid=ctl.id) }}" hidden></form>
+          </td>
+          <td class="text-end" style="width: 1%">
+            <div class="arc-ebg" role="toolbar" aria-label="Aksi {{ ctl.name }}" data-default="edit">
+              <button type="button" class="arc-ebg-btn" data-id="edit" aria-label="Edit {{ ctl.name }}">
+                <span class="arc-ebg-icon" aria-hidden="true"><i class="bi bi-pencil"></i></span><span class="arc-ebg-label" aria-hidden="true">Edit</span></button>
+              <button type="submit" form="ctl-save-{{ ctl.id }}" class="arc-ebg-btn" data-id="save" aria-label="Simpan {{ ctl.name }}" hidden>
+                <span class="arc-ebg-icon" aria-hidden="true"><i class="bi bi-check-lg"></i></span><span class="arc-ebg-label" aria-hidden="true">Simpan</span></button>
+              <button type="submit" form="ctl-delete-{{ ctl.id }}" class="arc-ebg-btn" data-id="delete" data-tone="danger"
+                data-confirm="Yakin hapus?" aria-label="Hapus {{ ctl.name }}">
+                <span class="arc-ebg-icon" aria-hidden="true"><i class="bi bi-trash3"></i></span><span class="arc-ebg-label" aria-hidden="true">Hapus</span></button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty">Belum ada pengendali UM. PUM baru butuh minimal satu.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body border-top">
+    <form method="post" action="{{ url_for('pum_controller_save') }}" class="d-flex gap-2">
+      <input name="name" class="form-control" maxlength="40" required placeholder="Nama pengendali baru" aria-label="Nama pengendali baru">
+      <button class="btn btn-outline-secondary text-nowrap"><i class="bi bi-plus-lg" aria-hidden="true"></i> Tambah</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<style>
+  .pum-sig { display: grid; width: 76px; justify-items: center; gap: 2px; }
+  .pum-sig img { width: 76px; height: 30px; object-fit: contain; mix-blend-mode: multiply; }
+  [data-theme="dark"] .pum-sig img { filter: invert(1); mix-blend-mode: screen; }
+  .pum-sig-empty { display: grid; width: 76px; height: 30px; place-items: center; border: 1px dashed var(--border-strong);
+                   border-radius: 8px; color: var(--text-muted); font-size: 11px; }
+  .pum-sig-label { color: var(--text-muted); font-size: 10.5px; line-height: 1; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Pengendali UM: Edit -> nama jadi isian, tombol Edit berganti Simpan. Esc membatalkan.
+  document.querySelectorAll("tr[data-ctl]").forEach((tr) => {
+    const name = tr.querySelector(".ctl-name"), input = tr.querySelector("input[name=name]");
+    const group = tr.querySelector(".arc-ebg"), edit = group.querySelector('[data-id="edit"]'), save = group.querySelector('[data-id="save"]');
+    const mode = (editing) => {
+      name.hidden = editing; input.hidden = !editing;
+      edit.hidden = editing; save.hidden = !editing;
+      group.dataset.default = editing ? "save" : "edit";
+      group.refresh();
+      if (editing) { input.focus(); input.select(); } else { input.value = input.dataset.original; edit.focus(); }
+    };
+    edit.addEventListener("click", () => mode(true));
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); mode(false); } });
+  });
+</script>
+
+{% endblock %}

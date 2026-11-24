@@ -1,0 +1,12 @@
+{# Chart monitoring: butuh `charts` = [{title, labels, series:[{label, values, bar}]}] dan div #xl-chart-<i> #}
+<script>
+  (() => {
+    const num = (v) => v.toLocaleString("id-ID", { maximumFractionDigits: 2 });
+    const numShort = (v) => new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(v);
+    {{ charts|tojson }}.forEach((ch, i) => Arc.line(document.getElementById("xl-chart-" + i), {
+      label: ch.title, labels: ch.labels, format: num, tickFormat: numShort,
+      series: ch.series.map((s, k) => ({ key: "s" + k, label: s.label, values: s.values, bar: s.bar,
+                                         color: `var(--cat-${k % 7 + 1})` })),
+    }));
+  })();
+</script>

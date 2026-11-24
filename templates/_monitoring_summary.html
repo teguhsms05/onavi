@@ -1,0 +1,19 @@
+{# Ringkasan keuangan: butuh `summary` dan `total` dari cost_summary() di app.py #}
+{% macro stat(label, value, sub=none, tone=none) %}
+<div class="col-6 col-md-4">
+  <div class="card h-100"><div class="card-body py-3">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm{% if tone %} text-{{ tone }}{% endif %}">{{ value }}</div>
+    {% if sub %}<div class="stat-sub">{{ sub }}</div>{% endif %}
+  </div></div>
+</div>
+{% endmacro %}
+<div class="row g-3 mb-3">
+  {{ stat("Nilai kontrak (excl. PPN)", summary.value|rp_short, summary.value|rp) }}
+  {{ stat("Total cost rencana", total.plan|rp_short, total.plan|rp) }}
+  {{ stat("Total cost actual", total.actual|rp_short,
+          total.actual|rp ~ (" · " ~ ("%.1f"|format(summary.actual_pct))|replace(".", ",") ~ "% dari nilai kontrak" if summary.actual_pct is not none else "")) }}
+  {{ stat("Deviasi (rencana − actual)", summary.deviation|rp_short, summary.deviation|rp, "danger" if summary.deviation < 0 else none) }}
+  {{ stat("Total cash-in", total.cash_in|rp_short, "Sisa nilai kontrak belum masuk: " ~ summary.remaining|rp) }}
+  {{ stat("Margin (kontrak − actual)", summary.margin|rp_short, summary.margin|rp, "danger" if summary.margin < 0 else none) }}
+</div>

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Monitoring Project{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <button type="button" class="btn btn-primary" data-disclosure="add-monitoring" aria-controls="add-monitoring" aria-expanded="{{ 'true' if open_form else 'false' }}">
+    <i class="bi bi-plus-lg" aria-hidden="true"></i> Tambah proyek
+  </button>
+</div>
+
+{# Form tambah: kiri isi otomatis dari file Excel, kanan isian. Terbuka setelah baca file atau bila ada error #}
+<div class="card mb-3" id="add-monitoring" {% if not open_form %}hidden{% endif %}>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Tambah proyek</span>
+    <button type="button" class="arc-icon-btn" data-disclosure-close aria-label="Tutup form tambah proyek"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="card-body">
+    <div class="row g-4">
+      <div class="col-xl-4">
+        <form method="post" action="{{ url_for('monitoring_read_xlsx') }}" enctype="multipart/form-data" class="row g-3"
+              data-arc-progress="Membaca file Excel" data-busy-label="Membaca file…">
+          <div class="col-12"><label class="form-label">Isi form ini dari file Excel</label>
+            <input name="xlsx" type="file" accept=".xlsx,.xlsm" class="form-control" required data-icon="bi bi-file-earmark-excel"
+                   data-arc-dropzone="Pilih file Detail Monitoring Project" data-note="XLSX, satu file, maksimal 20 MB" data-max-mb="20"
+                   data-required="Pilih file Excel dulu, lalu tekan Baca file."></div>
+          <div class="col-12">
+            <button class="btn btn-outline-secondary w-100"><i class="bi bi-file-earmark-excel"></i> Baca file</button>
+            <div class="form-text">Mengisi data proyek dan cost per bulan; hasilnya proyek isian dashboard. File dibaca di server onavi, tidak dikirim ke layanan luar.</div>
+          </div>
+        </form>
+        {% if xlsx_error %}<div class="alert alert-danger py-2 mt-3 mb-0">{{ xlsx_error }}</div>{% endif %}
+        {% if xlsx_read %}<div class="alert alert-secondary py-2 mt-3 mb-0">Form terisi dari {{ xlsx_name }}. Periksa dulu, lalu simpan.</div>{% endif %}
+
+        <form method="post" action="{{ url_for('monitoring_link') }}" class="row g-3 mt-2 pt-3 border-top">
+          <div class="col-12"><label class="form-label" for="m-link">Atau impor semua sheet dari file Excel</label>
+            <input id="m-link" name="xlsx_path" value="{{ link_path or '' }}" class="form-control" required
+              placeholder="/Users/.../Detail Monitoring Project.xlsx">
+            <div class="form-text">Tampil per sheet seperti Excel; angka bisa diedit, rumus dihitung ulang otomatis. File di Drive tidak diubah. Path: di Finder klik kanan file sambil tahan Option, pilih "Copy … as Pathname".</div></div>
+          <div class="col-12"><button class="btn btn-outline-secondary w-100"><i class="bi bi-box-arrow-in-down"></i> Impor file</button></div>
+        </form>
+        {% if link_error %}<div class="alert alert-danger py-2 mt-3 mb-0">{{ link_error }}</div>{% endif %}
+      </div>
+
+      <div class="col-xl-8">
+        {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+        <form method="post" action="{{ url_for('monitoring') }}" class="row g-3">
+          <div class="col-12"><label class="form-label" for="m-name">Nama proyek</label>
+            <input id="m-name" name="name" value="{{ pre.name or '' }}" class="form-control" required></div>
+          {% for key, label, kind in fields %}
+          <div class="col-md-6"><label class="form-label" for="m-{{ key }}">{{ label }}</label>
+            {% if kind == 'number' %}
+            <div class="input-group"><span class="input-group-text">Rp</span>
+              <input id="m-{{ key }}" name="{{ key }}" type="number" min="0" step="any" class="form-control"
+                value="{{ '%.0f'|format(pre[key]) if pre[key] is number else '' }}"></div>
+            {% else %}
+            <input id="m-{{ key }}" name="{{ key }}" type="{{ kind }}" class="form-control" value="{{ pre[key] or '' }}">
+            {% endif %}</div>
+          {% endfor %}
+          {% if pre_costs %}
+          <div class="col-12">
+            <input type="hidden" name="costs_json" value="{{ pre_costs|tojson|forceescape }}">
+            <div class="form-label">Cost per bulan dari file ({{ pre_costs|length }} bulan, ikut tersimpan)</div>
+            <div class="table-responsive"><table class="table table-sm mb-0">
+              <thead><tr><th>Bulan</th><th class="text-end">Cost rencana</th><th class="text-end">Cost actual</th><th class="text-end">Cash-in</th></tr></thead>
+              <tbody>{% for c in pre_costs %}<tr><td>{{ c.month|bulan }}</td><td class="text-end">{{ c.plan|rp }}</td><td class="text-end">{{ c.actual|rp }}</td><td class="text-end">{{ c.cash_in|rp }}</td></tr>{% endfor %}</tbody>
+            </table></div>
+          </div>
+          {% endif %}
+          <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+            <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan proyek</button>
+            <button type="button" class="btn btn-outline-secondary" data-disclosure-close>Batal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Daftar proyek monitoring</div>
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr><th>Proyek</th><th>Sumber</th><th>Diimpor</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><a class="text-body-emphasis" href="{{ url_for('monitoring_project', pid=r.id) }}">{{ r.name }}</a></td>
+          {% if r.source == 'manual' %}
+          <td>Isian dashboard</td><td>-</td>
+          {% else %}
+          <td class="text-break" title="{{ r.xlsx_path }}">{{ r.file_name }}</td>
+          <td class="text-nowrap">{{ r.imported_at|waktu }}</td>
+          {% endif %}
+          <td class="text-end">
+            <form method="post" action="{{ url_for('monitoring_delete', pid=r.id) }}">
+              <span class="arc-cm" data-prompt="Hapus {{ r.name }} dari daftar?{% if r.source == 'xlsx' %} File Excel tidak ikut terhapus.{% else %} Data cost bulanannya ikut terhapus.{% endif %}"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus {{ r.name }} dari daftar" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">Belum ada proyek monitoring.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pages > 1 %}
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2 border-top">
+    <span class="small text-body-secondary">{{ first }}–{{ first + rows|length - 1 }} dari {{ total }} proyek</span>
+    <nav aria-label="Halaman daftar proyek">
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('monitoring', page=page - 1) }}" aria-label="Sebelumnya"><i class="bi bi-chevron-left" aria-hidden="true"></i></a></li>
+        {% for n in range(1, pages + 1) %}
+        <li class="page-item {% if n == page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('monitoring', page=n) }}" {% if n == page %}aria-current="page"{% endif %}>{{ n }}</a></li>
+        {% endfor %}
+        <li class="page-item {% if page == pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('monitoring', page=page + 1) }}" aria-label="Berikutnya"><i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

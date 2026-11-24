@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Onavi">
+<title>Onavi</title>
+<rect width="512" height="512" rx="116" fill="#0B1426"/>
+<defs><mask id="gap-i" maskUnits="userSpaceOnUse"><rect x="0" y="0" width="100%" height="100%" fill="#fff"/><circle cx="338.1" cy="173.9" r="55.1" fill="#000"/></mask></defs>
+<circle cx="256" cy="256" r="116.0" fill="none" stroke="#E6EDF7" stroke-width="29.0" mask="url(#gap-i)"/>
+<circle cx="338.1" cy="173.9" r="37.7" fill="#22D3EE"/>
+<circle cx="256" cy="256" r="26.1" fill="#22D3EE"/>
+</svg>

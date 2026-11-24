@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+{% block title %}Kalkulator storage{% endblock %}
+
+{% macro sensor_row(kind, qty, interval, unit, channels) %}
+<div class="row g-2 align-items-start sensor-row mb-2">
+  <div class="col-md-4">
+    <label class="form-label d-md-none">Jenis sensor</label>
+    <select name="type" class="form-select js-type" aria-label="Jenis sensor">
+      {% for key, s in sensor_types.items() %}
+      <option value="{{ key }}" data-channels="{{ s.channels|length }}" data-cols="{{ s.channels|join(', ') }}" {% if key == kind %}selected{% endif %}>{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2">
+    <label class="form-label d-md-none">Jumlah</label>
+    <div class="input-group">
+      <input name="qty" type="number" min="1" step="1" value="{{ qty }}" class="form-control" aria-label="Jumlah sensor" required>
+      <span class="input-group-text">unit</span>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <label class="form-label d-md-none">Sampling interval</label>
+    <div class="input-group">
+      <input name="interval" type="number" min="0.000001" step="any" value="{{ interval }}" class="form-control js-interval" aria-label="Sampling interval" required>
+      <select name="unit" class="form-select js-unit flex-grow-0 w-auto" aria-label="Satuan interval">
+        <option value="s" {% if unit != "min" %}selected{% endif %}>detik</option>
+        <option value="min" {% if unit == "min" %}selected{% endif %}>menit</option>
+      </select>
+    </div>
+    <div class="form-text js-hz"></div>
+  </div>
+  <div class="col-9 col-md-2">
+    <label class="form-label d-md-none">Channel</label>
+    <div class="input-group">
+      <input name="channels" type="number" min="1" step="1" value="{{ channels }}" class="form-control js-channels" aria-label="Jumlah channel per sensor" required>
+      <span class="input-group-text">ch</span>
+    </div>
+  </div>
+  <div class="col-3 col-md-1 d-flex align-items-start justify-content-end">
+    <button type="button" class="btn btn-outline-secondary js-remove" aria-label="Hapus baris" title="Hapus baris"><i class="bi bi-trash3"></i></button>
+  </div>
+  <div class="col-12 form-text mt-0 js-cols"></div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header">Input sensor</div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+    <form method="get" id="storage-form" data-raw-base="{{ raw_row_base }}" data-stat-base="{{ stat_row_base }}">
+      <div class="row g-3 mb-4">
+        <div class="col-md-8 col-lg-6"><label class="form-label" for="calc-name">Nama hitungan <span class="text-secondary fw-normal">(opsional)</span></label>
+          <input id="calc-name" name="name" value="{{ inputs.name }}" maxlength="80" class="form-control" placeholder="Misalnya: Jembatan Suramadu, opsi A">
+          <div class="form-text">Tersimpan di riwayat. Kosongkan untuk memakai ringkasan sensor.</div></div>
+      </div>
+      <div class="row g-2 d-none d-md-flex form-label mb-1">
+        <div class="col-md-4">Jenis sensor</div>
+        <div class="col-md-2">Jumlah</div>
+        <div class="col-md-3">Sampling interval</div>
+        <div class="col-md-2">Channel</div>
+      </div>
+      <div id="sensor-rows">
+        {% for kind, qty, interval, unit, channels in inputs.rows %}{{ sensor_row(kind, qty, interval, unit, channels) }}{% endfor %}
+      </div>
+      <template id="sensor-row-tpl">{{ sensor_row("strain_gauge", 1, 1, "s", sensor_types["strain_gauge"].channels|length) }}</template>
+      <button type="button" class="btn btn-outline-secondary btn-sm mb-2" id="add-row"><i class="bi bi-plus-lg"></i> Tambah sensor</button>
+      <div class="form-text mb-3">
+        1 jenis sensor = 1 tabel raw + 1 tabel statistik (min, max, avg tiap channel), mengikuti skema marunda_dashboard.
+        Byte per baris = data + index, hasil ukur di PostgreSQL.
+      </div>
+
+      <div class="row g-3 align-items-start">
+        <div class="col-6 col-md-3"><label class="form-label">Retensi</label>
+          <div class="input-group"><input name="retention_days" type="number" min="1" value="{{ inputs.retention_days }}" class="form-control js-retention" required><span class="input-group-text">hari</span></div>
+          <div class="form-text js-retention-text"></div></div>
+        <div class="col-6 col-md-3"><label class="form-label">Periode statistik</label>
+          <div class="input-group"><input name="stat_minutes" type="number" min="1" step="1" value="{{ inputs.stat_minutes }}" class="form-control" required><span class="input-group-text">menit</span></div></div>
+        <div class="col-6 col-md-3"><label class="form-label">Kompresi TimescaleDB setelah</label>
+          <div class="input-group"><input name="compress_after" type="number" min="0" step="1" value="{{ inputs.compress_after }}" class="form-control" required><span class="input-group-text">hari</span></div>
+          <div class="form-text">Hanya tabel raw (hypertable).</div></div>
+        <div class="col-6 col-md-3"><label class="form-label">Hemat kompresi</label>
+          <div class="input-group"><input name="compress_pct" type="number" min="0" max="99.9" step="any" value="{{ inputs.compress_pct }}" class="form-control" required><span class="input-group-text">%</span></div>
+          <div class="form-text">Data sensor umumnya 90–97%. Isi 0 bila tanpa kompresi.</div></div>
+        <div class="col-md-3"><button class="btn btn-primary w-100"><i class="bi bi-calculator"></i> Hitung</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if result %}
+<div class="row g-3 mb-3">
+  {% for label, value, sub in [
+    ("Total selama retensi", result.total|size, result.per_day|size ~ " per hari"),
+    ("Tabel raw", result.raw_total|size, result.raw_uncompressed|size ~ " sebelum kompresi"),
+    ("Tabel statistik", result.stat_total|size, result.stat_day|size ~ " per hari"),
+    ("Disk rekomendasi", result.disk|size, "cadangan ruang 30%"),
+  ] %}
+  <div class="col-6 col-xl-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="stat-label">{{ label }}</div><div class="stat-value">{{ value }}</div><div class="stat-sub">{{ sub }}</div>
+    </div></div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">Pertumbuhan storage</div>
+      <div class="card-body"><div id="growthChart"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card card-donut h-100">
+      <div class="card-header">Komposisi per jenis sensor</div>
+      <div class="card-body"><div id="shareChart"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card card-donut h-100">
+      <div class="card-header">Storage per jenis sensor (selama retensi)</div>
+      <div class="card-body"><div id="typeChart"></div></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Rekomendasi spesifikasi server</div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <tbody>
+            <tr><td>Disk (usable, cadangan 30%)</td><td class="text-end text-body-emphasis fw-medium">{{ result.disk|size }}</td></tr>
+            <tr><td>CPU</td><td class="text-end text-body-emphasis">{{ result.cpu }} vCPU</td></tr>
+            <tr><td>RAM</td><td class="text-end text-body-emphasis">{{ result.ram }} GB</td></tr>
+            <tr><td>Laju tulis (raw + statistik)</td><td class="text-end text-body-emphasis">{{ result.rate|dec }} baris/detik</td></tr>
+            <tr><td>Hemat dari kompresi ({{ inputs.compress_pct|dec }}% setelah {{ inputs.compress_after }} hari)</td><td class="text-end text-body-emphasis">{{ result.saved|size }}</td></tr>
+            <tr><td>Storage per bulan (30 hari)</td><td class="text-end text-body-emphasis">{{ result.per_month|size }}</td></tr>
+            <tr><td>Storage per tahun</td><td class="text-end text-body-emphasis">{{ result.per_year|size }}</td></tr>
+            <tr><td>Catatan</td><td class="text-end">{{ result.note }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body pt-0 small text-secondary">
+        CPU/RAM adalah aturan praktis berdasarkan laju data, bukan hasil benchmark. Disk belum termasuk RAID/backup.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">Rincian per jenis sensor</div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr>
+            <th>Jenis sensor</th><th>Tabel raw</th><th>Tabel statistik</th><th class="text-end">Unit</th><th class="text-end">Channel</th>
+            <th class="text-end">Raw / hari</th><th class="text-end">Statistik / hari</th>
+            <th class="text-end">Selama retensi ({{ inputs.retention_days }} hari)</th><th class="text-end">Porsi</th>
+          </tr></thead>
+          <tbody>
+            {% for t in result.types %}
+            <tr>
+              <td class="text-nowrap"><span class="swatch" style="background: {{ t.color }}"></span>{{ t.label }}</td>
+              <td><code>{{ t.raw_table }}</code></td>
+              <td><code>{{ t.stat_table }}</code></td>
+              <td class="text-end">{{ t.qty|num }}</td>
+              <td class="text-end">{{ t.channels }}</td>
+              <td class="text-end">{{ t.raw_day|size }}</td>
+              <td class="text-end">{{ t.stat_day|size }}</td>
+              <td class="text-end text-body-emphasis">{{ t.total|size }}</td>
+              <td class="text-end">{{ "%.1f"|format(t.total / result.total * 100)|replace(".", ",") }}%</td>
+            </tr>
+            {% endfor %}
+            <tr class="fw-medium">
+              <td colspan="3">Total</td>
+              <td class="text-end">{{ result.types|sum(attribute="qty")|num }}</td>
+              <td></td>
+              <td class="text-end">{{ result.raw_day|size }}</td>
+              <td class="text-end">{{ result.stat_day|size }}</td>
+              <td class="text-end">{{ result.total|size }}</td>
+              <td class="text-end">100%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body pt-0 small text-secondary">
+        Tabel bertanda (usulan) belum ada di skema marunda_dashboard; kolomnya asumsi.
+        Kolom "selama retensi" sudah termasuk kompresi tabel raw; "per hari" adalah sebelum kompresi.
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card mt-3" id="riwayat">
+  <div class="card-header">Riwayat hitungan</div>
+  {% if logs %}
+  <div class="table-responsive">
+    <table class="table align-middle">
+      <thead><tr><th>Terakhir dipakai</th><th>Nama</th><th class="text-end">Total selama retensi</th><th></th></tr></thead>
+      <tbody>
+        {% for l in logs %}
+        {% set current = l.query == current_query %}
+        <tr>
+          <td class="text-nowrap">{{ l.used_at[:16] }}</td>
+          <td>
+            <div class="text-body-emphasis">{{ l.name or l.summary }}{% if current %} <span class="arc-badge">Sedang ditampilkan</span>{% endif %}</div>
+            {% if l.name %}<div class="small text-secondary">{{ l.summary }}</div>{% endif %}
+          </td>
+          <td class="text-end text-nowrap">{{ l.total|size }}</td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-secondary align-middle" href="{{ url_for('storage') }}?{{ l.query }}" aria-label="Muat hitungan {{ l.name or l.summary }}">Muat</a>
+            <form method="post" action="{{ url_for('storage_log_delete', log_id=l.id) }}" class="d-inline-block align-middle ms-1">
+              <input type="hidden" name="back" value="{{ current_query }}">
+              <span class="arc-cm" data-prompt="Hapus dari riwayat?"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                <button type="button" class="arc-cm-trigger" aria-label="Hapus riwayat {{ l.name or l.summary }}" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              </span></span></span>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body"><div class="empty">Belum ada riwayat. Setiap hitungan yang berhasil tersimpan di sini.</div></div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Baris sensor: tambah/hapus, konversi interval -> Hz, channel default per jenis + byte per baris
+  (function () {
+    const form = document.getElementById("storage-form");
+    const RAW_BASE = Number(form.dataset.rawBase), STAT_BASE = Number(form.dataset.statBase);
+    const rows = document.getElementById("sensor-rows");
+    const tpl = document.getElementById("sensor-row-tpl");
+    const fmt = (n) => n.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+
+    function updateHz(row) {
+      const v = parseFloat(row.querySelector(".js-interval").value);
+      const perMin = row.querySelector(".js-unit").value === "min";
+      const s = perMin ? v * 60 : v;
+      row.querySelector(".js-hz").textContent = s > 0
+        ? `= ${fmt(1 / s)} Hz (${fmt(1 / v)} data per ${perMin ? "menit" : "detik"})` : "";
+    }
+    function updateCols(row) {
+      const opt = row.querySelector(".js-type").selectedOptions[0];
+      const ch = parseInt(row.querySelector(".js-channels").value, 10);
+      const cols = Number(opt.dataset.channels) === ch ? opt.dataset.cols : `${ch || 0} kolom`;
+      row.querySelector(".js-cols").textContent = ch > 0
+        ? `Kolom: ${cols} · tabel raw ${RAW_BASE + 8 * ch} B/baris · tabel statistik ${STAT_BASE + 24 * ch} B/baris` : "";
+    }
+    function syncRemove() {
+      const all = rows.querySelectorAll(".sensor-row");
+      all.forEach((r) => (r.querySelector(".js-remove").disabled = all.length === 1));
+    }
+    rows.addEventListener("input", (e) => {
+      const row = e.target.closest(".sensor-row");
+      if (e.target.matches(".js-interval")) updateHz(row);
+      if (e.target.matches(".js-channels")) updateCols(row);
+    });
+    rows.addEventListener("change", (e) => {
+      const row = e.target.closest(".sensor-row");
+      if (e.target.matches(".js-unit")) updateHz(row);
+      if (e.target.matches(".js-type")) {
+        row.querySelector(".js-channels").value = e.target.selectedOptions[0].dataset.channels;
+        updateCols(row);
+      }
+    });
+    rows.addEventListener("click", (e) => {
+      const btn = e.target.closest(".js-remove");
+      if (!btn || btn.disabled) return;
+      btn.closest(".sensor-row").remove();
+      syncRemove();
+    });
+    document.getElementById("add-row").addEventListener("click", () => {
+      const row = tpl.content.firstElementChild.cloneNode(true);
+      rows.appendChild(row);
+      Arc.enhance(row);
+      updateHz(row);
+      updateCols(row);
+      syncRemove();
+      row.querySelector(".js-type").focus();
+    });
+    rows.querySelectorAll(".sensor-row").forEach((r) => { updateHz(r); updateCols(r); });
+    syncRemove();
+
+    // Retensi -> bulan & hari: 365 hari = 12 bulan, sisanya 1 bulan = 30 hari
+    const ret = form.querySelector(".js-retention");
+    const retText = form.querySelector(".js-retention-text");
+    function updateRetention() {
+      const d = parseInt(ret.value, 10);
+      if (!(d > 0)) { retText.textContent = ""; return; }
+      const rem = d % 365;
+      const months = Math.floor(d / 365) * 12 + Math.floor(rem / 30);
+      const days = rem % 30;
+      retText.textContent = "= " + [months && `${months} bulan`, days && `${days} hari`].filter(Boolean).join(" ");
+    }
+    ret.addEventListener("input", updateRetention);
+    updateRetention();
+  })();
+</script>
+
+{% if result %}
+<script>
+  const types = {{ result.types|tojson }};
+  const rawDay = {{ result.raw_day|tojson }};
+  const statDay = {{ result.stat_day|tojson }};
+  const disk = {{ result.disk|tojson }};
+  const retention = {{ inputs.retention_days|tojson }};
+  const compressAfter = {{ inputs.compress_after|tojson }};
+  const compressPct = {{ inputs.compress_pct|tojson }};
+  // sama dengan raw_days_equivalent() di app.py
+  const rawDaysEq = (d) => Math.min(d, compressAfter) + Math.max(d - compressAfter, 0) * (1 - compressPct / 100);
+
+  // Ukuran byte: satuan 1024, desimal Indonesia (sama dengan filter size di app.py)
+  function size(bytes, digits = 2) {
+    const names = ["B", "KB", "MB", "GB", "TB", "PB"];
+    let v = bytes, i = 0;
+    while (v >= 1024 && i < names.length - 1) { v /= 1024; i++; }
+    return `${v.toLocaleString("id-ID", { minimumFractionDigits: i ? digits : 0, maximumFractionDigits: i ? digits : 0 })} ${names[i]}`;
+  }
+  const sizeShort = (b) => size(b, b >= 1024 ? 1 : 0);
+
+  // Pertumbuhan: total terpakai (raw terkompres + statistik), tabel statistik, dan kapasitas disk
+  const steps = Math.min(retention, 60);
+  const days = [...new Set([...Array.from({ length: steps + 1 }, (_, i) => Math.round(i * retention / steps)),
+                            ...(compressAfter < retention ? [compressAfter] : [])])].sort((a, b) => a - b);
+  Arc.line(document.getElementById("growthChart"), {
+    label: "Pertumbuhan storage selama retensi", labels: days.map((d) => `Hari ${d}`), format: size, tickFormat: sizeShort,
+    series: [
+      { key: "total", label: "Total terpakai", color: "var(--accent)", area: true, values: days.map((d) => rawDay * rawDaysEq(d) + statDay * d) },
+      { key: "stat", label: "Tabel statistik", color: "var(--cat-1)", values: days.map((d) => statDay * d) },
+      { key: "disk", label: "Disk rekomendasi", color: "var(--text-secondary)", dashed: true, values: days.map(() => disk) },
+    ],
+  });
+
+  // Komposisi per jenis: warna mengikuti jenis sensor (sama dengan tabel rincian)
+  Arc.donut(document.getElementById("shareChart"), {
+    label: "Porsi storage tiap jenis sensor", totalLabel: "Total", format: size,
+    items: types.map((t) => ({ key: t.label, label: t.label, value: t.total, color: t.color })),
+  });
+
+  // Storage per jenis: geser batang untuk melihat rincian raw dan statistik
+  Arc.bar(document.getElementById("typeChart"), {
+    label: "Storage tiap jenis sensor selama retensi", labels: types.map((t) => t.label), values: types.map((t) => t.total),
+    kind: "Rata-rata per jenis sensor", format: size, tickFormat: sizeShort, restWhen: "Geser batang untuk rincian",
+    detail: (i) => `Tabel raw ${size(types[i].raw_total)} · tabel statistik ${size(types[i].stat_total)}`,
+  });
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+
+{% macro stat(label, value, sub=none, tone=none) %}
+<div class="col-6 col-xl-3">
+  <div class="card h-100"><div class="card-body">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm{% if tone %} text-{{ tone }}{% endif %}">{{ value }}</div>
+    {% if sub and sub != value %}<div class="stat-sub">{{ sub }}</div>{% endif %}
+  </div></div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+  <a class="back-link" href="{{ url_for('projects') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Semua proyek</a>
+  <div class="d-flex flex-wrap align-items-center gap-3">
+    <span class="small text-secondary">{{ p.client }}{% if p.contract_no %} · {{ p.contract_no }}{% endif %}{% if p.location %} · {{ p.location }}{% endif %} · {{ p.status|capitalize }}</span>
+    <button type="button" class="btn btn-outline-secondary" data-disclosure="edit-project" aria-controls="edit-project" aria-expanded="{{ 'true' if edit_error else 'false' }}">
+      <i class="bi bi-pencil" aria-hidden="true"></i> Edit proyek
+    </button>
+  </div>
+</div>
+
+{% if saved %}<div class="alert alert-success py-2" role="status">Perubahan tersimpan.</div>{% endif %}
+
+{# Form edit: tersembunyi sampai tombol diklik; terbuka bila penyimpanan sebelumnya gagal #}
+<div class="card mb-3" id="edit-project" {% if not edit_error %}hidden{% endif %}>
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Edit proyek</span>
+    <button type="button" class="arc-icon-btn" data-disclosure-close aria-label="Tutup form edit proyek"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+  </div>
+  <div class="card-body">
+    {% if edit_error %}<div class="alert alert-danger py-2">{{ edit_error }}</div>{% endif %}
+    <form method="post" action="{{ url_for('project_edit', item_id=p.id) }}" class="row g-3">
+      <div class="col-lg-6"><label class="form-label" for="e-name">Nama proyek</label>
+        <input id="e-name" name="name" value="{{ p.name }}" class="form-control" required></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-client">Klien</label>
+        <input id="e-client" name="client" value="{{ p.client }}" class="form-control" required></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-no">No. kontrak</label>
+        <input id="e-no" name="contract_no" value="{{ p.contract_no or '' }}" class="form-control"></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-loc">Lokasi</label>
+        <input id="e-loc" name="location" value="{{ p.location or '' }}" class="form-control"></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-status">Status</label>
+        <select id="e-status" name="status" class="form-select">{% for s in statuses %}<option value="{{ s }}" {% if s == p.status %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}</select></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-value">Nilai kontrak</label>
+        <div class="input-group"><span class="input-group-text">Rp</span>
+          <input id="e-value" name="contract_value" value="{{ '%.0f'|format(p.contract_value) }}" type="number" min="0" step="any" class="form-control" required></div></div>
+      <div class="col-md-6 col-lg-3"><label class="form-label" for="e-cost">Estimasi biaya</label>
+        <div class="input-group"><span class="input-group-text">Rp</span>
+          <input id="e-cost" name="est_cost" value="{{ '%.0f'|format(p.est_cost) }}" type="number" min="0" step="any" class="form-control" required></div></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="e-start">Tanggal mulai</label>
+        <input id="e-start" name="start_date" value="{{ p.start_date or '' }}" type="date" class="form-control"></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="e-end">Tanggal berakhir</label>
+        <input id="e-end" name="end_date" value="{{ p.end_date or '' }}" type="date" class="form-control"></div>
+      <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan perubahan</button>
+        <button type="button" class="btn btn-outline-secondary" data-disclosure-close>Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {{ stat("Nilai kontrak", p.contract_value|rp_short, p.contract_value|rp) }}
+  {{ stat("Estimasi biaya", p.est_cost|rp_short, p.est_cost|rp) }}
+  {{ stat("Estimasi margin", margin|rp_short, margin|rp, "danger" if margin < 0 else none) }}
+  {{ stat("Margin terhadap kontrak", "%.1f"|format(margin_pct)|replace(".", ",") ~ "%", "dari nilai kontrak", "danger" if margin < 0 else none) }}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card card-donut h-100">
+      <div class="card-header">Komposisi nilai kontrak</div>
+      <div class="card-body">
+        {% if p.contract_value %}
+        <div id="compositionChart"></div>
+        {% if margin < 0 %}<p class="small text-danger mt-3 mb-0">Biaya melebihi nilai kontrak sebesar {{ (-margin)|rp }}.</p>{% endif %}
+        {% else %}
+        <div class="empty">Nilai kontrak belum diisi.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Waktu pelaksanaan</div>
+      <div class="card-body">
+        {% if timeline %}
+        {% set complete = timeline.pct >= 100 %}
+        <div class="arc-progress" role="progressbar" aria-label="Waktu pelaksanaan berjalan" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{{ timeline.pct|round|int }}" aria-valuetext="{{ timeline.pct|round|int }}%" {% if complete %}data-complete{% endif %}>
+          <div class="arc-progress-meta">
+            <span>{% if timeline.not_started %}Belum dimulai{% elif complete %}Selesai{% else %}Berjalan{% endif %}</span>
+            <span class="arc-progress-hint">{{ timeline.pct|round|int }}%</span>
+          </div>
+          <div class="arc-progress-track"><span class="arc-progress-fill" style="transform: translateX(-{{ 100 - timeline.pct }}%)"></span></div>
+        </div>
+        <dl class="detail-list mt-4 mb-0">
+          <div><dt>Mulai</dt><dd>{{ p.start_date }}</dd></div>
+          <div><dt>Berakhir</dt><dd>{{ p.end_date }}</dd></div>
+          <div><dt>Durasi</dt><dd>{{ timeline.total|num }} hari</dd></div>
+          <div><dt>Sudah berjalan</dt><dd>{{ timeline.elapsed|num }} hari</dd></div>
+          <div><dt>Sisa</dt><dd>{{ timeline.left|num }} hari</dd></div>
+          {% if timeline.total %}<div><dt>Nilai kontrak per hari</dt><dd>{{ (p.contract_value / timeline.total)|rp }}</dd></div>{% endif %}
+        </dl>
+        {% else %}
+        <div class="empty">Tanggal mulai dan berakhir belum lengkap, jadi waktu pelaksanaan belum bisa dihitung.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Data kontrak</div>
+  <div class="card-body">
+    <dl class="detail-list detail-list-cols mb-0">
+      <div><dt>Nama proyek</dt><dd>{{ p.name }}</dd></div>
+      <div><dt>Klien</dt><dd>{{ p.client }}</dd></div>
+      <div><dt>No. kontrak</dt><dd>{{ p.contract_no or "-" }}</dd></div>
+      <div><dt>Lokasi</dt><dd>{{ p.location or "-" }}</dd></div>
+      <div><dt>Status</dt><dd>{{ p.status|capitalize }}</dd></div>
+      <div><dt>Periode</dt><dd>{{ p.start_date or "-" }} s.d. {{ p.end_date or "-" }}</dd></div>
+    </dl>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if p.contract_value %}
+<script>
+  // Ringkas seperti kartu angka (Rp 1,25 M); angka lengkap ada di kartu di atas
+  const rpShort = (v) => "Rp " + new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 2 }).format(v);
+  const value = {{ p.contract_value|tojson }}, cost = {{ p.est_cost|tojson }};
+  // Nilai kontrak = biaya + margin. Bila biaya melebihi kontrak, margin tidak digambar (ada catatan di bawah chart).
+  Arc.donut(document.getElementById("compositionChart"), {
+    label: "Komposisi nilai kontrak", totalLabel: "Nilai kontrak", format: rpShort, groupBelow: 0,
+    items: [
+      { key: "cost", label: "Estimasi biaya", value: Math.min(cost, value), color: "var(--cat-1)" },
+      { key: "margin", label: "Estimasi margin", value: Math.max(value - cost, 0), color: "var(--success)" },
+    ],
+  });
+</script>
+{% endif %}
+{% endblock %}
