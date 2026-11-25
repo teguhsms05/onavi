@@ -122,6 +122,17 @@ CREATE TABLE IF NOT EXISTS signatures (
     mime TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS pum_backups (
+    id INTEGER PRIMARY KEY,
+    doc_id INTEGER NOT NULL,
+    item TEXT NOT NULL,
+    pic TEXT NOT NULL,
+    description TEXT NOT NULL,
+    qty REAL NOT NULL DEFAULT 1,
+    unit TEXT NOT NULL DEFAULT '',
+    price REAL NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS pum_controllers (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL
@@ -901,7 +912,7 @@ def read_charts(ws, wb, value=lambda c: c.value, inside=lambda c: True):
 # (None = sampai akhir), sheet daftar = baris bisa ditambah/dihapus). Sheet lain bukan daftar: barisnya kode biaya
 # yang dicocokkan antar-sheet (INDEX/MATCH), jadi tidak boleh disisipi.
 MONITORING_LAYOUT = [
-    ("breakdown cost", "I", 262, True), ("initial budget", "E", 49, False), ("cost planning", "P", 49, False),
+    ("breakdown cost", "I", 263, True), ("initial budget", "E", 49, False), ("cost planning", "P", 49, False),
     ("actual cost", "N", 54, False), ("rekap progress", "P", 49, False), ("material support", "G", None, True),
     ("tools", "G", None, True),
 ]
@@ -929,9 +940,114 @@ def make_snapshot(source):
     for ws in list(wb.worksheets):
         if ws.title not in keep:
             wb.remove(ws)
+    main_material_first(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def move_rows_ref(formula, own_sheet, target, lo, hi, offset):
+    """Rujukan ke baris lo..hi di sheet `target` (sel, atau rentang yang kedua ujungnya di situ) digeser `offset`."""
+    tok = Tokenizer(formula)
+    for t in tok.items:
+        if t.type != "OPERAND" or t.subtype != "RANGE" or not (m := CELL_REF.match(t.value)):
+            continue
+        sheet = m["sheet"][:-1].strip("'").replace("''", "'") if m["sheet"] else own_sheet
+        r1, r2 = int(m["r1"]), int(m["r2"] or m["r1"])
+        if sheet == target and lo <= r1 <= hi and lo <= r2 <= hi:
+            t.value = f"{m['sheet'] or ''}{m['c1']}{m['a1']}{r1 + offset}" + (
+                f":{m['c2']}{m['a2']}{r2 + offset}" if m["r2"] else "")
+    return "=" + "".join(t.value for t in tok.items)
+
+
+def move_rows(wb, ws, lo, hi, to):
+    """Pindahkan baris lo..hi ke baris kosong to..to+(hi-lo) (isi, format, merged, tinggi); rumus semua sheet
+    yang merujuk baris itu ikut pindah."""
+    offset = to - lo
+    for w, c, text in formula_cells(wb):
+        set_formula(c, move_rows_ref(text, w.title, ws.title, lo, hi, offset))
+    for rng in [r for r in ws.merged_cells.ranges if lo <= r.min_row and r.max_row <= hi]:
+        ws.unmerge_cells(rng.coord)
+        ws.merge_cells(start_row=rng.min_row + offset, start_column=rng.min_col,
+                       end_row=rng.max_row + offset, end_column=rng.max_col)
+    for r in range(lo, hi + 1):
+        for col in range(1, ws.max_column + 1):
+            src, dst = ws.cell(r, col), ws.cell(r + offset, col)
+            if isinstance(src, MergedCell) or isinstance(dst, MergedCell):
+                continue
+            dst.value, dst._style = src.value, copy.copy(src._style)
+            dst.data_type = src.data_type
+            src.value = None
+        if r in ws.row_dimensions:
+            ws.row_dimensions[r + offset].height = ws.row_dimensions[r].height
+
+
+def main_material_first(wb):
+    """Main Material jadi urutan 1: di Breakdown Cost seksinya dipindah ke paling atas ("1. Main Material"),
+    di sheet ringkasan (Initial Budget, Cost Planning, Actual Cost) baris 'Cash (Total PUM)' diganti Main Material
+    dan baris Main Material lama dihapus; daftar KETERANGAN KODE ikut (Cash dihapus, Main Material di urutan 1)."""
+    ws = find_sheet(wb, "breakdown cost")
+    text = lambda w, r, c: str(w.cell(r, c).value or "").strip()
+    head = next((r for r in range(1, ws.max_row + 1) if re.fullmatch(r"\d+\.\s*main material", text(ws, r, 1).lower())), None)
+    top = next((r for r in range(1, ws.max_row + 1) if re.match(r"\d+\.\s", text(ws, r, 1))), None)
+    if head and top and head != top:
+        end = next(r for r in range(head, ws.max_row + 1) if text(ws, r, 7).lower() == "total")
+        n = end - head + 1
+        for _ in range(n + 1):  # n baris seksi + 1 baris kosong pemisah
+            change_rows(wb, ws, top, 1)
+        for rng in [r for r in ws.merged_cells.ranges if top <= r.min_row and r.max_row <= top + n]:
+            ws.unmerge_cells(rng.coord)
+        for r in range(top, top + n + 1):  # baris sisipan menyalin baris di atasnya: kosongkan
+            for col in range(1, ws.max_column + 1):
+                if not isinstance(ws.cell(r, col), MergedCell):
+                    ws.cell(r, col).value = None
+        head += n + 1
+        move_rows(wb, ws, head, head + n - 1, top)
+        ws.cell(top, 1).value = re.sub(r"^\d+", "1", text(ws, top, 1))
+        for _ in range(n):
+            change_rows(wb, ws, head, -1)
+
+    legend_mm = None
+    sheets = [w for w in (find_sheet(wb, k) for k in ("initial budget", "cost planning", "actual cost")) if w]
+    for w in sheets:  # isi kode Main Material diambil dari daftar kode yang memilikinya
+        for row in w.iter_rows():
+            for c in row:
+                if str(c.value or "").strip().lower() == "main material" and c.column > 3:
+                    legend_mm = legend_mm or [(x.value, x.data_type) for x in w[c.row][c.column - 2:]]
+    for w in sheets:
+        rows = {text(w, r, 2).lower(): r for r in range(1, w.max_row + 1) if text(w, r, 2)}
+        cash, mm = rows.get("cash (total pum)"), rows.get("main material")
+        kode = next((c for row in w.iter_rows() for c in row if text(w, c.row, c.column).upper() == "KETERANGAN KODE"), None)
+        if not cash or not mm or not kode:
+            continue
+        first = kode.column - 1  # kolom nomor daftar kode
+        # daftar kode: baris berurutan mulai baris Cash; Cash diganti Main Material, entri Main Material lama dibuang
+        entries, r = [], cash
+        while isinstance(w.cell(r, kode.column + 1).value, str) and w.cell(r, kode.column + 1).value.strip():
+            entries.append([(x.value, x.data_type) for x in w[r][first:]])
+            r += 1
+        name_at = lambda e: str(e[1][0] or "").strip().lower() if len(e) > 1 else ""
+        mm_entry = next((e for e in entries if name_at(e) == "main material"), None) or legend_mm
+        entries = [mm_entry if name_at(e) == "cash" else e for e in entries if name_at(e) != "main material"]
+        span = r - cash
+        # baris tabel: isi Main Material ke baris Cash (kolom kiri daftar kode, nomor urut tetap)
+        for w2, c, f in formula_cells(wb):
+            set_formula(c, move_rows_ref(f, w2.title, w.title, mm, mm, cash - mm))
+        for col in range(2, first):
+            src, dst = w.cell(mm, col), w.cell(cash, col)
+            if not isinstance(src, MergedCell) and not isinstance(dst, MergedCell):
+                dst.value, dst.data_type = src.value, src.data_type
+        change_rows(wb, w, mm, -1)
+        for i in range(span):
+            for j, col in enumerate(range(first, w.max_column + 1)):
+                cell = w.cell(cash + i, col)
+                if isinstance(cell, MergedCell):
+                    continue
+                if i < len(entries):
+                    v, dt = (i + 1, "n") if j == 0 else (entries[i][j - 1] if j - 1 < len(entries[i]) else (None, "n"))
+                    cell.value, cell.data_type = v, dt
+                else:
+                    cell.value = None
 
 
 def save_snapshot(pid, source):
@@ -1043,6 +1159,7 @@ def shift_ref(token, own_sheet, target, at, delta, axis="row", track_last=False,
     disisipkan (delta=1, yang baru = at) atau dihapus (delta=-1). Rujukan ke yang dihapus -> #REF!. Rentang di
     sheet yang sama yang berakhir tepat sebelum sisipan ikut diperlebar, supaya SUM daftar / bulan mencakupnya."""
     # band (kolom): hanya rujukan yang barisnya di dalam pita (baris_atas, baris_bawah) yang bergeser.
+    # band (baris): hanya rujukan yang kolomnya di dalam pita (kolom_kiri, kolom_kanan) yang bergeser.
     # track_last (kolom bulan): rujukan kolom absolut ($M) ke kolom terakhir adalah jangkar "bulan terakhir", mis.
     # MIN($O11,$M$10) di distribusi rencana; jangkar ikut pindah ke kolom terakhir yang baru (sisip/hapus di ujung).
     m = CELL_REF.match(token)
@@ -1052,6 +1169,9 @@ def shift_ref(token, own_sheet, target, at, delta, axis="row", track_last=False,
     if sheet != target:
         return token
     if band and axis == "col" and not (band[0] <= int(m["r1"]) <= band[1] and band[0] <= int(m["r2"] or m["r1"]) <= band[1]):
+        return token
+    col_in = lambda c: band[0] <= column_index_from_string(c.lstrip("$")) <= band[1]
+    if band and axis == "row" and not (col_in(m["c1"]) and col_in(m["c2"] or m["c1"])):
         return token
     if axis == "row":
         i1, i2 = int(m["r1"]), int(m["r2"] or m["r1"])
@@ -1105,21 +1225,26 @@ def set_formula(cell, text):
         cell.value = text
 
 
-def row_references(wb, ws, row):
-    """Sel di luar baris `row` yang rumusnya merujuk baris itu (akan jadi #REF! bila baris dihapus)."""
+def row_references(wb, ws, row, cols=None):
+    """Sel di luar baris `row` yang rumusnya merujuk baris itu (akan jadi #REF! bila baris dihapus).
+    cols (kolom_kiri, kolom_kanan): hanya rujukan ke sel baris itu di dalam kolom tersebut."""
     found = []
     for w, c, text in formula_cells(wb):
         if w is ws and c.row == row:
             continue
-        if "#REF!" in shift_formula(text, w.title, ws.title, row, -1) and "#REF!" not in text:
+        if "#REF!" in shift_formula(text, w.title, ws.title, row, -1, band=cols) and "#REF!" not in text:
             found.append(f"{w.title}!{c.coordinate}")
     return found
 
 
-def change_rows(wb, ws, at, delta):
+def change_rows(wb, ws, at, delta, cols=None):
     """Sisipkan baris baru `at` (delta=1, rumus & format disalin dari baris di atasnya, sel input kosong)
     atau hapus baris `at` (delta=-1). Rumus semua sheet, merged cell, dan tinggi/sembunyi baris ikut digeser.
-    (Validasi data, conditional formatting, dan chart tidak digeser: sheet daftar tidak memilikinya.)"""
+    (Validasi data, conditional formatting, dan chart tidak digeser: sheet daftar tidak memilikinya.)
+    cols (kolom_kiri, kolom_kanan), hanya untuk hapus: yang dihapus & digeser naik hanya sel di kolom itu (area
+    tampil); isi di luarnya, mis. tabel parameter tersembunyi di kanan, tetap di tempatnya."""
+    if cols and delta < 0:
+        return delete_row_cells(wb, ws, at, cols)
     for w, c, text in formula_cells(wb):
         set_formula(c, shift_formula(text, w.title, ws.title, at, delta))
     moved = lambda r: r + (r >= at) if delta > 0 else (None if r == at else r - (r > at))
@@ -1136,6 +1261,10 @@ def change_rows(wb, ws, at, delta):
                 dst.value = Translator(src.value, origin=src.coordinate).translate_formula(dst.coordinate)
     else:
         ws.delete_rows(at)
+    for row in ws.iter_rows():  # array formula satu sel menyimpan alamatnya sendiri: ikut posisi barunya
+        for c in row:
+            if isinstance(c.value, ArrayFormula) and ":" not in c.value.ref:
+                c.value.ref = c.coordinate
     ws.row_dimensions.clear()
     for r, d in dims:
         if moved(r):
@@ -1154,6 +1283,29 @@ def change_rows(wb, ws, at, delta):
             ws.merge_cells(start_row=top, start_column=rng.min_col, end_row=bottom, end_column=rng.max_col)
         if delta > 0 and rng.min_row == rng.max_row == at - 1:  # merged satu baris di baris template ikut disalin
             ws.merge_cells(start_row=at, start_column=rng.min_col, end_row=at, end_column=rng.max_col)
+
+
+def delete_row_cells(wb, ws, at, cols):
+    """Hapus sel baris `at` di kolom cols (kiri, kanan); sel di bawahnya pada kolom itu naik satu baris."""
+    lo, hi = cols
+    for w, c, text in formula_cells(wb):
+        set_formula(c, shift_formula(text, w.title, ws.title, at, -1, band=cols))
+    merged = [CellRange(r.coord) for r in ws.merged_cells.ranges
+              if r.max_row >= at and lo <= r.min_col and r.max_col <= hi]
+    for rng in merged:
+        ws.unmerge_cells(rng.coord)
+    for col in range(lo, hi + 1):
+        ws.cell(at, col).value = None
+    if at < ws.max_row:
+        ws.move_range(f"{get_column_letter(lo)}{at + 1}:{get_column_letter(hi)}{ws.max_row}", rows=-1)
+    for row in ws.iter_rows(min_col=lo, max_col=hi):
+        for c in row:
+            if isinstance(c.value, ArrayFormula) and ":" not in c.value.ref:
+                c.value.ref = c.coordinate
+    for rng in merged:
+        top, bottom = rng.min_row - (rng.min_row > at), rng.max_row - (rng.max_row >= at)
+        if bottom > top or (bottom == top and rng.max_col > rng.min_col):
+            ws.merge_cells(start_row=top, start_column=rng.min_col, end_row=bottom, end_column=rng.max_col)
 
 
 def change_cols(wb, ws, at, delta, track_last=False, band=None, last_only=()):
@@ -1809,7 +1961,7 @@ def monitoring_rows(pid, sheet_idx):
     layout = book_layout(book) if book else []
     if not 0 <= sheet_idx < len(layout) or not layout[sheet_idx][3]:
         abort(404)
-    title, max_row = layout[sheet_idx][0].title, layout[sheet_idx][2]
+    title, max_col, max_row = layout[sheet_idx][0].title, layout[sheet_idx][1], layout[sheet_idx][2]
     action, row = request.form.get("action"), request.form.get("row", type=int)
     back = lambda r, **kw: redirect(url_for("monitoring_project", pid=pid, sheet_idx=sheet_idx, **kw) + f"#c-A{r}")
     if action not in ("insert", "delete") or not row or not 1 <= row <= max_row:
@@ -1819,12 +1971,12 @@ def monitoring_rows(pid, sheet_idx):
         con.execute("SELECT xlsx FROM monitoring_books WHERE project_id=?", (pid,)).fetchone()["xlsx"]))
     ws = wb[title]
     if action == "delete":
-        refs = row_references(wb, ws, row)
+        refs = row_references(wb, ws, row, (1, max_col))
         if refs:
             more = f" dan {len(refs) - 3} lainnya" if len(refs) > 3 else ""
             return back(row, error=f"Baris {row} tidak bisa dihapus: dipakai rumus di {', '.join(refs[:3])}{more}.")
     at, delta = (row + 1, 1) if action == "insert" else (row, -1)
-    change_rows(wb, ws, at, delta)
+    change_rows(wb, ws, at, delta, (1, max_col))  # hapus: hanya kolom area tampil
     buf = io.BytesIO()
     wb.save(buf)
     extra = json.loads(con.execute("SELECT extra_rows FROM monitoring_books WHERE project_id=?", (pid,)).fetchone()[0])
@@ -1836,7 +1988,10 @@ def monitoring_rows(pid, sheet_idx):
     for e in edits:
         col, r = re.fullmatch(r"([A-Z]+)(\d+)", e["cell"]).groups()
         r = int(r)
-        r = r + (r >= at) if delta > 0 else (None if r == at else r - (r > at))
+        if delta > 0:
+            r = r + (r >= at)
+        elif column_index_from_string(col) <= max_col:  # hapus: hanya sel di area tampil yang naik
+            r = None if r == at else r - (r > at)
         if r:
             con.execute("INSERT INTO monitoring_edits (project_id, sheet, cell, value) VALUES (?,?,?,?)",
                         (pid, title, f"{col}{r}", e["value"]))
@@ -2256,20 +2411,21 @@ def pum_doc(pid, doc_id):
     p, doc = monitoring_or_404(pid), pum_doc_or_404(pid, doc_id)
     pum = load_pum(doc)
     signed = json.loads(doc["signatures"] or "{}")
-    rows, widths = pum_rows(pum, signed)
     slots = [{**x, "signature": signature_for(x["name"]), "signed": signed.get(x["key"], "").lower() == x["name"].lower()}
              for x in pum_sign_slots(pum)]
     periode = pum_layout(pum["wb"].active)["fields"].get("periode")
     range_cell = {"ref": periode.coordinate, "value": periode_range(periode.value)} if periode is not None else None
+    backups, pics = pum_backups(doc_id, pum["wb"].active)
+    rows, widths = pum_rows(pum, signed, backup_locked(pum["wb"].active, backups))
     return render_template("pum_doc.html", active="monitoring", monitoring_pid=pid, p=p, doc=doc, slots=slots,
-                           range_cell=range_cell,
+                           range_cell=range_cell, backups=backups, pics=pics,
                            sheet={"title": doc["no_pum"] or "PUM baru", "rows": rows, "widths": widths,
                                   "images": 0, "is_list": False},
                            categories=json.loads(doc["categories"]), saved=request.args.get("saved") == "1",
                            error=request.args.get("error", "")[:200])
 
 
-def pum_rows(pum, signed=None):
+def pum_rows(pum, signed=None, locked=None):
     """Baris tabel PUM (read_sheet). Tabel PUM polos: hanya header berwarna (teks putih) yang dipertahankan.
     signed = {slot: nama} dari pum_docs.signatures: gambar tanda tangan tampil di baris kosong tepat di atas nama,
     hanya bila nama di PUM masih sama dengan nama yang menandatangani."""
@@ -2279,6 +2435,8 @@ def pum_rows(pum, signed=None):
         for c in row["cells"]:
             if c["fill"] and not c["on_fill"]:
                 c["fill"] = None
+            if c["ref"] in (locked or {}):  # jumlah dari backup: terkunci seperti rumus
+                c["formula"] = f"total backup {locked[c['ref']]}"
     layout = pum_layout(ws)
     grand, header = layout["grand"], layout["items"][0][0] - 2
     for row in rows:  # baris tanda tangan (di bawah GRAND TOTAL): diberi ruang lebih di tampilan cetak
@@ -2418,8 +2576,11 @@ def pum_pdf(pid, doc_id):
     """Halaman cetak A4 satu PUM; dialog cetak terbuka otomatis (Simpan sebagai PDF). Judul = nama file PDF."""
     monitoring_or_404(pid)
     doc = pum_doc_or_404(pid, doc_id)
-    rows, widths = pum_rows(load_pum(doc), json.loads(doc["signatures"] or "{}"))
-    return render_template("pum_print.html", doc=doc, rows=rows, widths=widths)
+    pum = load_pum(doc)
+    backups, _pics = pum_backups(doc_id, pum["wb"].active)
+    rows, widths = pum_rows(pum, json.loads(doc["signatures"] or "{}"), backup_locked(pum["wb"].active, backups))
+    return render_template("pum_print.html", doc=doc, rows=rows, widths=widths,
+                           backups=[b for b in backups if b["lines"]])
 
 
 @app.post("/monitoring/<int:pid>/pum/<int:doc_id>/cell")
@@ -2438,6 +2599,9 @@ def pum_cell(pid, doc_id):
         return back(error="No. PUM dibuat otomatis dari nomor urut dan Tanggal PUM.")
     if is_formula(cell):
         return back(error=f"Sel {ref} berisi rumus dan dihitung otomatis, tidak bisa diedit.")
+    item = backup_locked(ws, pum_backups(doc_id, ws)[0]).get(cell.coordinate)
+    if item:
+        return back(error=f"Sel {ref} mengikuti total backup {item}; ubah lewat Backup di bawah tabel.")
     periode = pum_layout(ws)["fields"].get("periode")
     if periode is not None and cell.coordinate == periode.coordinate and "range_from" in request.form:
         try:  # Periode diisi lewat 2 kalender -> teks "11 Nov - 17 Nov 2026"
@@ -2454,6 +2618,98 @@ def pum_cell(pid, doc_id):
         cell.data_type = "s"  # teks berawalan "=" tetap teks
     save_pum(doc_id, wb)
     return back(saved=1)
+
+
+# ---- Backup PUM: rincian per item (Qty x Harga), total per PIC masuk ke sel jumlah item itu di form PUM ----
+
+def pum_pics(ws):
+    """Nama PIC di bawah header 'Ammount': {kolom: nama}."""
+    layout = pum_layout(ws)
+    names_row = layout["items"][0][0] - 1
+    return {c: str(ws.cell(names_row, c).value or "").strip() for c in layout["pic_cols"]}
+
+
+def pum_backups(doc_id, ws):
+    """-> ([{idx, item, row, lines, total, totals {pic: Rp}, stray}], nama PIC). Semua item PUM, urut form."""
+    pics = list(pum_pics(ws).values())
+    lines = db().execute("SELECT * FROM pum_backups WHERE doc_id=? ORDER BY id", (doc_id,)).fetchall()
+    out = []
+    for idx, (row, item) in enumerate(pum_layout(ws)["items"]):
+        mine = [dict(x, amount=x["qty"] * x["price"]) for x in lines if x["item"] == item]
+        totals = {pic: sum(x["amount"] for x in mine if x["pic"].lower() == pic.lower()) for pic in pics}
+        stray = [x for x in mine if x["pic"].lower() not in [pic.lower() for pic in pics]]  # PIC sudah tidak ada
+        out.append({"idx": idx, "item": item, "row": row, "lines": mine, "total": sum(totals.values()),
+                    "totals": totals, "stray": stray})
+    return out, pics
+
+
+def backup_locked(ws, backups):
+    """Sel jumlah (kolom PIC) item yang punya backup: {sel: nama item}."""
+    cols = pum_layout(ws)["pic_cols"]
+    return {f"{get_column_letter(c)}{b['row']}": b["item"] for b in backups if b["lines"] for c in cols}
+
+
+def sync_pum_backup(doc_id, item):
+    """Tulis total backup `item` per PIC ke sel jumlahnya di form PUM (tanpa backup: dikosongkan), lalu simpan."""
+    wb = openpyxl.load_workbook(io.BytesIO(db().execute("SELECT xlsx FROM pum_docs WHERE id=?", (doc_id,)).fetchone()["xlsx"]))
+    ws = wb.active
+    b = next((b for b in pum_backups(doc_id, ws)[0] if b["item"] == item), None)
+    if b is None:
+        return
+    for col, pic in pum_pics(ws).items():
+        ws.cell(b["row"], col).value = b["totals"].get(pic) or None
+    save_pum(doc_id, wb)
+
+
+@app.post("/monitoring/<int:pid>/pum/<int:doc_id>/backup")
+def pum_backup_save(pid, doc_id):
+    """Tambah (tanpa id) atau ubah satu baris backup."""
+    doc = pum_doc_or_404(pid, doc_id)
+    ws = load_pum(doc)["wb"].active
+    f = request.form
+    items = [name for _r, name in pum_layout(ws)["items"]]
+    item = f.get("item", "")
+    if item not in items:
+        abort(400)
+    back = lambda **kw: redirect(url_for("pum_doc", pid=pid, doc_id=doc_id, **kw) + f"#bk-{items.index(item)}")
+    pic = next((x for x in pum_pics(ws).values() if x.lower() == f.get("pic", "").strip().lower()), None)
+    desc = f.get("description", "").strip()[:200]
+    try:
+        qty, price = float(f.get("qty") or 0), float(f.get("price") or 0)
+    except ValueError:
+        return back(error="Qty dan harga satuan harus angka.")
+    if not pic:
+        return back(error="Pilih PIC.")
+    if not desc:
+        return back(error="Deskripsi backup wajib diisi.")
+    if qty < 0 or price < 0:
+        return back(error="Qty dan harga satuan tidak boleh negatif.")
+    values = (item, pic, desc, qty, f.get("unit", "").strip()[:20], price, f.get("note", "").strip()[:200])
+    con = db()
+    bid = f.get("id", type=int)
+    if bid:
+        con.execute("UPDATE pum_backups SET item=?, pic=?, description=?, qty=?, unit=?, price=?, note=?"
+                    " WHERE id=? AND doc_id=?", (*values, bid, doc_id))
+    else:
+        con.execute("INSERT INTO pum_backups (item, pic, description, qty, unit, price, note, doc_id)"
+                    " VALUES (?,?,?,?,?,?,?,?)", (*values, doc_id))
+    con.commit()
+    sync_pum_backup(doc_id, item)
+    return back(saved=1)
+
+
+@app.post("/monitoring/<int:pid>/pum/<int:doc_id>/backup/<int:bid>/delete")
+def pum_backup_delete(pid, doc_id, bid):
+    doc = pum_doc_or_404(pid, doc_id)
+    line = db().execute("SELECT item FROM pum_backups WHERE id=? AND doc_id=?", (bid, doc_id)).fetchone()
+    if line is None:
+        abort(404)
+    db().execute("DELETE FROM pum_backups WHERE id=?", (bid,))
+    db().commit()
+    sync_pum_backup(doc_id, line["item"])
+    items = [name for _r, name in pum_layout(load_pum(doc)["wb"].active)["items"]]
+    anchor = f"#bk-{items.index(line['item'])}" if line["item"] in items else "#backup"
+    return redirect(url_for("pum_doc", pid=pid, doc_id=doc_id, saved=1) + anchor)
 
 
 def periode_text(start, end):
@@ -2478,6 +2734,7 @@ def periode_range(text):
 def pum_delete(pid, doc_id):
     pum_doc_or_404(pid, doc_id)
     db().execute("DELETE FROM pum_docs WHERE id=?", (doc_id,))
+    db().execute("DELETE FROM pum_backups WHERE doc_id=?", (doc_id,))
     db().commit()
     _pums.pop(doc_id, None)
     return redirect(url_for("pum_list", pid=pid))

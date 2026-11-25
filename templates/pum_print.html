@@ -37,6 +37,17 @@
                   padding: 0 4mm; background: #C00000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .doc-header-tagline { color: #fff; font-size: 13px; font-weight: 700; font-style: italic; line-height: 1.2; }
     .doc-header-logo { height: 10mm; }
+    /* Lampiran backup: mulai di halaman baru, boleh lebih dari satu halaman */
+    .backup { max-width: 190mm; margin: 0 auto; break-before: page; }
+    .backup h1 { margin: 0; font-size: 14px; }
+    .backup .sub { margin: 2px 0 10px; color: #555; }
+    table.bk { margin-bottom: 14px; }
+    table.bk th, table.bk td { border: 1px solid #555; padding: 3px 5px; }
+    table.bk th { text-align: left; font-weight: 600; }
+    table.bk th.bk-item { background: #C00000; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.bk .r { text-align: right; white-space: nowrap; }
+    table.bk tr.b td { font-weight: 600; }
+    table.bk thead { display: table-header-group; }
   </style>
 </head>
 <body>
@@ -61,6 +72,34 @@
       </tbody>
     </table>
   </main>
+  {% if backups %}
+  {# Lampiran backup: halaman baru sesudah PUM; satu tabel per item yang punya backup #}
+  <section class="backup">
+    {% include "_doc_header.html" %}
+    <h1>Backup PUM</h1>
+    <p class="sub">{{ doc.no_pum }}</p>
+    {% for b in backups %}
+    <table class="bk">
+      <colgroup><col style="width:6%"><col style="width:30%"><col style="width:11%"><col style="width:7%"><col style="width:7%">
+        <col style="width:14%"><col style="width:15%"><col style="width:10%"></colgroup>
+      <thead>
+        <tr><th colspan="8" class="bk-item">{{ b.item }}</th></tr>
+        <tr><th>No</th><th>Deskripsi</th><th>PIC</th><th class="r">Qty</th><th>Unit</th><th class="r">Harga satuan</th><th class="r">Jumlah</th><th>Ket.</th></tr>
+      </thead>
+      <tbody>
+        {% for x in b.lines %}
+        <tr><td>{{ loop.index }}</td><td>{{ x.description }}</td><td>{{ x.pic }}</td><td class="r">{{ '%g'|format(x.qty) }}</td>
+          <td>{{ x.unit }}</td><td class="r">{{ x.price|rp }}</td><td class="r">{{ x.amount|rp }}</td><td>{{ x.note }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        {% for pic, amt in b.totals.items() if amt %}<tr><td colspan="6" class="r">Total {{ pic }}</td><td class="r">{{ amt|rp }}</td><td></td></tr>{% endfor %}
+        <tr class="b"><td colspan="6" class="r">Total {{ b.item }}</td><td class="r">{{ b.total|rp }}</td><td></td></tr>
+      </tfoot>
+    </table>
+    {% endfor %}
+  </section>
+  {% endif %}
   <script>
     // Satu halaman utuh: bila isi lebih tinggi dari area cetak A4 (297mm - margin 2 x 10mm), perkecil proporsional
     const sheet = document.querySelector(".sheet");

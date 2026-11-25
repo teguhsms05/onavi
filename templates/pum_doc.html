@@ -19,6 +19,84 @@
 {% include "_sheet_table.html" %}
 {% endwith %}
 
+{# Backup: rincian per item PUM (Qty x Harga satuan). Total per PIC otomatis jadi jumlah item itu di form PUM (terkunci). #}
+<div class="card mt-3" id="backup">
+  <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+    <span>Backup per item</span>
+    <span class="small text-body-secondary">Total per PIC otomatis masuk ke kolom Ammount item tersebut</span>
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for b in backups %}
+    <li class="list-group-item p-0">
+      <button type="button" class="bk-toggle" data-disclosure="bk-{{ b.idx }}" aria-controls="bk-{{ b.idx }}" aria-expanded="false">
+        <span class="bk-no">{{ loop.index }}</span>
+        <span class="flex-grow-1 text-start">{{ b.item }}</span>
+        {% if b.lines %}<span class="small text-body-secondary">{{ b.lines|length }} baris</span>
+        <span class="fw-medium text-body-emphasis text-nowrap">{{ b.total|rp }}</span>{% else %}<span class="small text-body-secondary">Belum ada backup</span>{% endif %}
+        <i class="bi bi-chevron-down bk-chev" aria-hidden="true"></i>
+      </button>
+      <div id="bk-{{ b.idx }}" class="bk-panel" hidden>
+        {% if b.stray %}<div class="alert alert-secondary py-2 small mb-2">{{ b.stray|length }} baris memakai PIC yang sudah tidak ada di kolom PUM ({{ b.stray|map(attribute='pic')|unique|join(', ') }}) dan tidak ikut dijumlah. Ubah PIC-nya.</div>{% endif %}
+        {% if b.lines %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-2 bk-table">
+            <thead><tr><th>No</th><th>Deskripsi</th><th>PIC</th><th class="text-end">Qty</th><th>Unit</th>
+              <th class="text-end">Harga satuan</th><th class="text-end">Jumlah</th><th>Keterangan</th><th></th></tr></thead>
+            <tbody>
+              {% for x in b.lines %}
+              <tr>
+                <td>{{ loop.index }}</td><td>{{ x.description }}</td><td>{{ x.pic }}</td>
+                <td class="text-end">{{ '%g'|format(x.qty) }}</td><td>{{ x.unit }}</td>
+                <td class="text-end text-nowrap">{{ x.price|rp }}</td><td class="text-end text-nowrap">{{ x.amount|rp }}</td><td>{{ x.note }}</td>
+                <td class="text-end text-nowrap">
+                  <button type="button" class="btn btn-sm btn-link p-1" title="Ubah" aria-label="Ubah baris {{ loop.index }}" data-bk-edit
+                    data-id="{{ x.id }}" data-description="{{ x.description }}" data-pic="{{ x.pic }}" data-qty="{{ '%g'|format(x.qty) }}"
+                    data-unit="{{ x.unit }}" data-price="{{ '%.2f'|format(x.price) }}" data-note="{{ x.note }}"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                  <form method="post" action="{{ url_for('pum_backup_delete', pid=p.id, doc_id=doc.id, bid=x.id) }}" class="d-inline">
+                    <span class="arc-cm" data-prompt="Hapus baris {{ x.description }}?"><span class="arc-cm-surface"><span class="arc-cm-face" data-face="idle">
+                      <button type="button" class="arc-cm-trigger" aria-label="Hapus baris {{ loop.index }}" title="Hapus"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+                    </span></span></span>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              {% for pic, amt in b.totals.items() if amt %}
+              <tr><td colspan="6" class="text-end text-body-secondary">Total {{ pic }}</td><td class="text-end text-nowrap">{{ amt|rp }}</td><td colspan="2"></td></tr>
+              {% endfor %}
+              <tr class="fw-semibold"><td colspan="6" class="text-end">Total {{ b.item }}</td><td class="text-end text-nowrap">{{ b.total|rp }}</td><td colspan="2"></td></tr>
+            </tfoot>
+          </table>
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('pum_backup_save', pid=p.id, doc_id=doc.id) }}" class="row g-2 align-items-end" data-bk-form>
+          <input type="hidden" name="item" value="{{ b.item }}"><input type="hidden" name="id">
+          <div class="col-md-4"><label class="form-label small mb-1" for="bk-d-{{ b.idx }}">Deskripsi</label>
+            <input id="bk-d-{{ b.idx }}" name="description" class="form-control form-control-sm" required maxlength="200"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1" for="bk-p-{{ b.idx }}">PIC</label>
+            <select id="bk-p-{{ b.idx }}" name="pic" class="form-select form-select-sm" required>
+              {% for pic in pics %}<option>{{ pic }}</option>{% endfor %}
+            </select></div>
+          <div class="col-3 col-md-1"><label class="form-label small mb-1" for="bk-q-{{ b.idx }}">Qty</label>
+            <input id="bk-q-{{ b.idx }}" name="qty" type="number" min="0" step="any" value="1" class="form-control form-control-sm" required></div>
+          <div class="col-3 col-md-1"><label class="form-label small mb-1" for="bk-u-{{ b.idx }}">Unit</label>
+            <input id="bk-u-{{ b.idx }}" name="unit" class="form-control form-control-sm" maxlength="20" placeholder="ls"></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1" for="bk-h-{{ b.idx }}">Harga satuan</label>
+            <input id="bk-h-{{ b.idx }}" name="price" type="number" min="0" step="any" class="form-control form-control-sm" required></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1" for="bk-k-{{ b.idx }}">Keterangan</label>
+            <input id="bk-k-{{ b.idx }}" name="note" class="form-control form-control-sm" maxlength="200"></div>
+          <div class="col-12 d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-primary" data-bk-submit><i class="bi bi-plus-lg" aria-hidden="true"></i> Tambah baris</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bk-cancel hidden>Batal ubah</button>
+          </div>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
 {# Tanda tangan: tersimpan per nama, dipakai ulang di PUM lain. Tampil hanya bila nama di PUM sama dengan yang menandatangani. #}
 <div class="card mt-3" id="ttd">
   <div class="card-header">Tanda tangan</div>
@@ -92,6 +170,16 @@
                 padding: 8px 20px; border-radius: var(--radius-surface); background: #C00000; }
   .doc-header-tagline { color: #fff; font-size: 17px; font-weight: 700; font-style: italic; line-height: 1.25; }
   .doc-header-logo { height: 40px; }
+  .bk-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: 0; background: none;
+               color: inherit; font: inherit; text-align: left; }
+  .bk-toggle:hover { background: var(--surface-hover, rgba(0,0,0,.03)); }
+  .bk-no { width: 24px; color: var(--text-secondary, #6b7280); font-variant-numeric: tabular-nums; }
+  .bk-chev { transition: transform .2s ease; color: var(--text-secondary, #6b7280); }
+  .bk-toggle[aria-expanded="true"] .bk-chev { transform: rotate(180deg); }
+  .bk-panel { padding: 4px 16px 16px 52px; scroll-margin-top: 170px; }  /* judul item tetap terlihat di bawah editbar sticky */
+  .bk-table { font-variant-numeric: tabular-nums; }
+  @media (max-width: 576px) { .bk-panel { padding-left: 16px; } }
+  @media (prefers-reduced-motion: reduce) { .bk-chev { transition: none; } }
   .ttd-preview { max-width: 160px; max-height: 56px; mix-blend-mode: multiply; }
   [data-theme="dark"] .ttd-preview { filter: invert(1); mix-blend-mode: screen; }
   .ttd-pad { width: 100%; max-width: 480px; height: 160px; border: 1px dashed var(--border-strong); border-radius: 12px;
@@ -116,6 +204,22 @@
 
 {% block scripts %}
 <script>
+  // Backup: tombol ubah mengisi form item itu dengan isi baris; Batal ubah kembali ke mode tambah
+  document.querySelectorAll("[data-bk-form]").forEach((form) => {
+    const submit = form.querySelector("[data-bk-submit]"), cancel = form.querySelector("[data-bk-cancel]");
+    const mode = (editing) => {
+      submit.innerHTML = editing ? '<i class="bi bi-check-lg" aria-hidden="true"></i> Simpan perubahan'
+                                 : '<i class="bi bi-plus-lg" aria-hidden="true"></i> Tambah baris';
+      cancel.hidden = !editing;
+    };
+    form.closest(".bk-panel").querySelectorAll("[data-bk-edit]").forEach((btn) => btn.addEventListener("click", () => {
+      for (const k of ["id", "description", "pic", "qty", "unit", "price", "note"]) form.elements[k].value = btn.dataset[k];
+      mode(true);
+      form.elements.description.focus();
+    }));
+    cancel.addEventListener("click", () => { form.reset(); form.elements.id.value = ""; mode(false); });
+  });
+
   // Papan tanda tangan: gambar dengan mouse/jari/stylus; hasil PNG transparan dikirim lewat field "drawn"
   document.querySelectorAll("[data-ttd-form]").forEach((form) => {
     const pad = form.querySelector(".ttd-pad"), ctx = pad.getContext("2d");
